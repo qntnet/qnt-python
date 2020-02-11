@@ -1,0 +1,33 @@
+package:
+  name: "qnt"
+  version: "0.0.102"
+
+source:
+  path: .
+
+build:
+  noarch: generic
+  number: 0
+  script: "{{ PYTHON }} -m pip install . --no-deps --ignore-installed -vvv "
+
+requirements:
+  host:
+    - pip
+    - python=3.7.*
+    - setuptools
+
+  run:
+    - scipy=1.2.*
+    - pandas=0.24.*
+    - xarray=0.12.*
+    - bottleneck=1.2.*
+    - numpy=1.16.*
+    - numba=0.43.*
+    - tabulate=0.8.*
+    - python=3.7.*
+  #  - conda-forge::python-avro=1.8.*
+  #  - quantnet::ta-lib
+
+about:
+  license: MIT
+  home: https://quantnet.ai

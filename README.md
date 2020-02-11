@@ -1,0 +1,1 @@
+QNT library for the strategies development on quantnet.ai
