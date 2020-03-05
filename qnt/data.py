@@ -44,7 +44,6 @@ ds = Dimensions
 
 TIMEOUT = 60
 
-
 def load_assets(
         min_date: tp.Union[str, datetime.date] = '2007-01-01',
         max_date: tp.Union[str, datetime.date, None] = None
@@ -52,8 +51,8 @@ def load_assets(
     """
     :return: list of dicts with info for all tickers
     """
-    min_date = fix_date(min_date)
-    max_date = fix_date(max_date)
+    min_date = parse_date(min_date)
+    max_date = parse_date(max_date)
 
     if MAX_DATE_LIMIT is not None:
         if max_date is not None:
@@ -205,8 +204,8 @@ def load_secgov_forms(
         'types': types,
         'facts': facts,
         'skip_segment': skip_segment,
-        'min_date': fix_date(min_date).isoformat(),
-        'max_date': fix_date(max_date).isoformat()
+        'min_date': parse_date(min_date).isoformat(),
+        'max_date': parse_date(max_date).isoformat()
     }
     go = True
     while go:
@@ -227,8 +226,8 @@ def load_index_list(
     """
     :return: list of dicts with info for all indexes
     """
-    min_date = fix_date(min_date)
-    max_date = fix_date(max_date)
+    min_date = parse_date(min_date)
+    max_date = parse_date(max_date)
 
     if MAX_DATE_LIMIT is not None:
         if max_date is not None:
@@ -255,6 +254,7 @@ def load_index_data(
         ids: tp.Union[None, tp.List[str]] = None,
         min_date: tp.Union[str, datetime.date] = '2007-01-01',
         max_date: tp.Union[str, datetime.date, None] = None,
+        dims: tp.Tuple[str, str] = (ds.TIME, ds.ASSET),
         forward_order: bool = False
 ) -> tp.Union[None, xr.DataArray]:
     if ids is None:
@@ -273,11 +273,34 @@ def load_index_data(
 
     if forward_order:
         arr = arr.sel(**{ds.TIME: slice(None, None, -1)})
-    return arr
+    return arr.transpose(*dims)
+
+
+def load_cryptocurrency_data(
+        min_date: tp.Union[str, datetime.date, datetime.datetime] = '2007-01-01',
+        max_date: tp.Union[str, datetime.date, datetime.datetime, None] = None,
+        dims: tp.Tuple[str, str, str] = (ds.FIELD, ds.TIME, ds.ASSET),
+        forward_order: bool = False
+) -> tp.Union[None, xr.DataArray]:
+    if max_date is None:
+        max_date = datetime_to_hours_str(datetime.datetime.now(tz=datetime.timezone.utc))
+    min_date = parse_date_and_hour(min_date)
+    max_date = parse_date_and_hour(max_date)
+    uri = "crypto?min_date=" + datetime_to_hours_str(min_date) + "&max_date=" + datetime_to_hours_str(max_date)
+    raw = request_with_retry(uri, None)
+    if raw is None or len(raw) < 1:
+        return None
+
+    arr = xr.open_dataarray(raw, cache=True, decode_times=True)
+    arr = arr.compute()
+
+    if forward_order:
+        arr = arr.sel(**{ds.TIME: slice(None, None, -1)})
+
+    return arr.transpose(*dims)
 
 
 BATCH_LIMIT = 300000
-
 
 def load_origin_data(assets, min_date, max_date=None):
     assets = [translate_user_id_to_server_id(id) for id in assets]
@@ -287,8 +310,8 @@ def load_origin_data(assets, min_date, max_date=None):
         with open(whole_data_file_flag_name, "w") as text_file:
             text_file.write("last")
 
-    min_date = fix_date(min_date)
-    max_date = fix_date(max_date)
+    min_date = parse_date(min_date)
+    max_date = parse_date(max_date)
 
     if MAX_DATE_LIMIT is not None:
         if max_date is not None:
@@ -377,16 +400,39 @@ def request_with_retry(uri, data):
     raise Exception("can't download " + uri)
 
 
-def fix_date(dt) -> datetime.date:
+def parse_date(dt: tp.Union[None, str, datetime.datetime, datetime.date]) -> datetime.date:
     if dt is None:
-        return datetime.datetime.now().date()
+        return datetime.date.today()
     if isinstance(dt, str):
-        return datetime.datetime.strptime(dt, "%Y-%m-%d").date()
+        return datetime.datetime.strptime(dt + "Z+00:00", "%Y-%m-%dZ%z").date()
     if isinstance(dt, datetime.datetime):
+        dt = datetime.datetime.fromtimestamp(dt.timestamp(), tz=datetime.timezone.utc)  # rm timezone
         return dt.date()
     if isinstance(dt, datetime.date):
         return dt
     raise Exception("invalid date")
+
+
+def parse_date_and_hour(dt: tp.Union[None, str, datetime.datetime, datetime.date]) -> datetime.datetime:
+    if dt is None:
+        return datetime.datetime.now(tz=datetime.timezone.utc)
+    if isinstance(dt, datetime.date):
+        return datetime.datetime(dt.year, dt.month, dt.day, datetime.timezone.utc)
+    if isinstance(dt, datetime.datetime):
+        dt = datetime.datetime.fromtimestamp(dt.timestamp(), tz=datetime.timezone.utc)  # rm timezone
+        dt = dt.isoformat()
+    if isinstance(dt, str):
+        dt = dt.split(":")[0]
+        if 'T' in dt:
+
+            return datetime.datetime.strptime(dt + "Z+00:00", "%Y-%m-%dT%HZ%z")
+        else:
+            return datetime.datetime.strptime(dt + "Z+00:00", "%Y-%m-%dZ%z")
+    raise Exception("invalid date")
+
+
+def datetime_to_hours_str(dt: datetime.datetime) -> str:
+    return dt.strftime("%Y-%m-%dT%H")
 
 
 if idt.USE_ID_TRANSLATION is None:

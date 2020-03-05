@@ -6,7 +6,6 @@ import numpy as np
 from .data import load_data, f, ds, write_output
 from .stats import calc_non_liquid
 
-
 class SimpleStrategy:
     init_data_length = 0  # optional - data length for init
 
@@ -120,6 +119,7 @@ def test_strategy(data, strategy=None, **kwargs):
 
 
 calc_step_by_step = test_strategy
+
 
 # for testing purpose
 if __name__ == "__main__":

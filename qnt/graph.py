@@ -16,14 +16,14 @@ def make_plot(index, data, color="#17BECF", width=3, name="chart", range_min=Non
         min_ = data.min()
         max_ = data.max()
         range = [min_ - (max_ - min_) * 0.05, max_ + (max_ - min_) * 0.05]
-
+    
     elif (range_min != None) and (range_max != None):
         range = [range_min, range_max]
 
     elif (range_min != None):
         max_ = data.max()
         range = [range_min, max_ + (max_ - range_min) * 0.03]
-
+        
     else:
         min_ = data.min()
         range = [min_ - (range_max - min_) * 0.03, range_max]
@@ -32,7 +32,7 @@ def make_plot(index, data, color="#17BECF", width=3, name="chart", range_min=Non
         range = [math.log(range[0], 10), math.log(range[1], 10)]
 
     layout = go.Layout(showlegend=True, yaxis=dict(range=range, type=type))
-
+    
     fig = go.Figure(data=data_, layout=layout)
 
     ply.iplot(fig)
@@ -64,14 +64,14 @@ def make_plot_filled(index, data, color="#17BECF", width=3, name="chart", range_
         min_ = data.min()
         max_ = data.max()
         range = [min_ - (max_ - min_) * 0.05, max_ + (max_ - min_) * 0.05]
-
+        
     elif (range_min != None) and (range_max != None):
         range = [range_min, range_max]
 
     elif (range_min != None):
         max_ = data.max()
         range = [range_min, max_ + (max_ - range_min) * 0.03]
-
+        
     else:
         min_ = data.min()
         range = [min_ - (range_max - min_) * 0.03, range_max]
@@ -80,7 +80,7 @@ def make_plot_filled(index, data, color="#17BECF", width=3, name="chart", range_
         range = [math.log(range[0], 10), math.log(range[1], 10)]
 
     layout = go.Layout(showlegend=True, yaxis=dict(range=range, type=type))
-
+                       
     fig = go.Figure(data=data_, layout=layout)
 
     ply.iplot(fig)

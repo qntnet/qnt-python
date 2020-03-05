@@ -6,9 +6,9 @@ import pandas as pd
 import gzip, base64, json
 from urllib import parse, request
 from tabulate import tabulate
+import numba
 
 EPS = 10 ** -7
-
 
 def calc_slippage(data, period=14, fract=0.05):
     """
@@ -43,7 +43,7 @@ def calc_relative_return(data, portfolio_history, slippage_factor=0.05, per_asse
 
     OPEN = D.loc[f.OPEN].ffill(ds.TIME).fillna(0)
     CLOSE = D.loc[f.CLOSE].ffill(ds.TIME).fillna(0)
-    DIVS = D.loc[f.DIVS].fillna(0)
+    DIVS = D.loc[f.DIVS].fillna(0) if f.DIVS in D.coords[ds.FIELD] else xr.full_like(D.loc[f.CLOSE], 0)
 
     # boolean matrix when assets available for trading
     UNLOCKED = np.logical_and(np.isfinite(D.loc[f.OPEN].values), np.isfinite(D.loc[f.CLOSE].values))
@@ -53,7 +53,7 @@ def calc_relative_return(data, portfolio_history, slippage_factor=0.05, per_asse
 
     if per_asset:
         RR = W.copy(True)
-        RR[:] = calc_relative_return_np_per_asset(W.values, UNLOCKED, OPEN.values, CLOSE.values, slippage.values,
+        RR[:] = calc_relative_return_np_per_asset(W.values, UNLOCKED.values, OPEN.values, CLOSE.values, slippage.values,
                                                   DIVS.values)
         return RR
     else:
@@ -62,10 +62,13 @@ def calc_relative_return(data, portfolio_history, slippage_factor=0.05, per_asse
             dims=[ds.TIME],
             coords={ds.TIME: W.coords[ds.TIME]}
         )
-        RR[:] = calc_relative_return_np(W.values, UNLOCKED, OPEN.values, CLOSE.values, slippage.values, DIVS.values)
+        res = calc_relative_return_np(W.values, UNLOCKED.values, OPEN.values, CLOSE.values, slippage.values,
+                                      DIVS.values)
+        RR[:] = res
         return RR
 
 
+@numba.njit
 def calc_relative_return_np_per_asset(WEIGHT, UNLOCKED, OPEN, CLOSE, SLIPPAGE, DIVS):
     N = np.zeros(WEIGHT.shape)  # shares count
 
@@ -83,43 +86,48 @@ def calc_relative_return_np_per_asset(WEIGHT, UNLOCKED, OPEN, CLOSE, SLIPPAGE, D
             N[t] = N[t - 1]
             equity_before_buy[t] = equity_after_buy[t - 1] + (OPEN[t] - OPEN[t - 1] + DIVS[t]) * N[t]
 
-        N[t, unlocked] = equity_before_buy[t, unlocked] * WEIGHT[t, unlocked] / OPEN[t, unlocked]
+        N[t][unlocked] = equity_before_buy[t][unlocked] * WEIGHT[t][unlocked] / OPEN[t][unlocked]
         dN = N[t]
         if t > 0:
             dN = dN - N[t - 1]
-        S = SLIPPAGE[t] * abs(dN)  # slippage for this step
+        S = SLIPPAGE[t] * np.abs(dN)  # slippage for this step
         equity_after_buy[t] = equity_before_buy[t] - S
         equity_tonight[t] = equity_after_buy[t] + (CLOSE[t] - OPEN[t]) * N[t]
 
         locked = np.logical_not(unlocked)
         if t == 0:
-            equity_before_buy[0, locked] = 1
-            equity_after_buy[0, locked] = 1
-            equity_tonight[0, locked] = 1
-            N[0, locked] = 0
+            equity_before_buy[0][locked] = 1
+            equity_after_buy[0][locked] = 1
+            equity_tonight[0][locked] = 1
+            N[0][locked] = 0
         else:
-            N[t, locked] = N[t - 1, locked]
-            equity_after_buy[t, locked] = equity_after_buy[t - 1, locked]
-            equity_before_buy[t, locked] = equity_before_buy[t - 1, locked]
-            equity_tonight[t, locked] = equity_tonight[t - 1, locked]
+            N[t][locked] = N[t - 1][locked]
+            equity_after_buy[t][locked] = equity_after_buy[t - 1][locked]
+            equity_before_buy[t][locked] = equity_before_buy[t - 1][locked]
+            equity_tonight[t][locked] = equity_tonight[t - 1][locked]
 
     E = equity_tonight
-    Ep = np.roll(E, 1, axis=0)
+    # Ep = np.roll(E, 1, axis=0)
+    Ep = E.copy()
+    for i in range(1, Ep.shape[0]):
+        Ep[i - 1] = Ep[i]
+
     Ep[0] = 1
     RR = E / Ep - 1
     RR = np.where(np.isfinite(RR), RR, 0)
     return RR
 
 
+@numba.njit
 def calc_relative_return_np(WEIGHT, UNLOCKED, OPEN, CLOSE, SLIPPAGE, DIVS):
     N = np.zeros(WEIGHT.shape)  # shares count
 
-    equity_before_buy = np.zeros([WEIGHT.shape[0]])
-    equity_operable_before_buy = np.zeros([WEIGHT.shape[0]])
-    equity_after_buy = np.zeros([WEIGHT.shape[0]])
-    equity_tonight = np.zeros([WEIGHT.shape[0]])
+    equity_before_buy = np.zeros(WEIGHT.shape[0])
+    equity_operable_before_buy = np.zeros(WEIGHT.shape[0])
+    equity_after_buy = np.zeros(WEIGHT.shape[0])
+    equity_tonight = np.zeros(WEIGHT.shape[0])
 
-    for t in range(0, WEIGHT.shape[0]):
+    for t in range(WEIGHT.shape[0]):
         unlocked = UNLOCKED[t]  # available for trading
         locked = np.logical_not(unlocked)
 
@@ -130,21 +138,21 @@ def calc_relative_return_np(WEIGHT, UNLOCKED, OPEN, CLOSE, SLIPPAGE, DIVS):
             N[t] = N[t - 1]
             equity_before_buy[t] = equity_after_buy[t - 1] + np.nansum((OPEN[t] - OPEN[t - 1] + DIVS[t]) * N[t])
 
-        w_sum = np.nansum(abs(WEIGHT[t]))
+        w_sum = np.nansum(np.abs(WEIGHT[t]))
         w_free_cash = max(1, w_sum) - w_sum
-        w_unlocked = np.nansum(abs(WEIGHT[t, unlocked]))
+        w_unlocked = np.nansum(np.abs(WEIGHT[t][unlocked]))
         w_operable = w_unlocked + w_free_cash
 
-        equity_operable_before_buy[t] = equity_before_buy[t] - np.nansum(OPEN[t, locked] * abs(N[t, locked]))
+        equity_operable_before_buy[t] = equity_before_buy[t] - np.nansum(OPEN[t][locked] * np.abs(N[t][locked]))
 
         if w_operable < EPS:
             equity_after_buy[t] = equity_before_buy[t]
         else:
-            N[t, unlocked] = equity_operable_before_buy[t] * WEIGHT[t, unlocked] / (w_operable * OPEN[t, unlocked])
-            dN = N[t, unlocked]
+            N[t][unlocked] = equity_operable_before_buy[t] * WEIGHT[t][unlocked] / (w_operable * OPEN[t][unlocked])
+            dN = N[t][unlocked]
             if t > 0:
-                dN = dN - N[t - 1, unlocked]
-            S = np.nansum(SLIPPAGE[t, unlocked] * abs(dN))  # slippage for this step
+                dN = dN - N[t - 1][unlocked]
+            S = np.nansum(SLIPPAGE[t][unlocked] * np.abs(dN))  # slippage for this step
             equity_after_buy[t] = equity_before_buy[t] - S
 
         equity_tonight[t] = equity_after_buy[t] + np.nansum((CLOSE[t] - OPEN[t]) * N[t])
@@ -200,8 +208,9 @@ def arrange_data(data, target_weights, additional_series=None, per_asset=False):
     weights_intersection = weights_intersection.where(np.isfinite(weights_intersection)).fillna(0)
 
     adjusted_tw.loc[time_intersected, assets] = weights_intersection
-    adjusted_tw = adjusted_tw.where(
-        np.logical_or(np.logical_not(np.isnan(adjusted_tw.values)), adjusted_data.loc[f.IS_LIQUID] > 0), 0)
+    adjusted_tw = adjusted_tw.where(np.logical_not(np.isnan(adjusted_tw.values)), 0)
+    if f.IS_LIQUID in adjusted_data.coords[ds.FIELD]:
+        adjusted_tw = adjusted_tw.where(adjusted_data.loc[f.IS_LIQUID] > 0, 0)
 
     if per_asset:
         adjusted_tw = xr.where(adjusted_tw > 1, 1, adjusted_tw)
@@ -232,25 +241,34 @@ def calc_equity(relative_return):
     return (relative_return + 1).cumprod(ds.TIME)
 
 
-def calc_volatility(relative_return, max_periods=252, min_periods=2):
+def calc_volatility(relative_return, max_periods=None, min_periods=2, points_per_year=None):
     """
     :param relative_return: daily return
     :param max_periods: maximal number of days
     :param min_periods: minimal number of days
     :return: portfolio volatility
     """
+    if points_per_year is None:
+        points_per_year = calc_avg_points_per_year(relative_return)
+    if max_periods is None:
+        max_periods = points_per_year
     max_periods = min(max_periods, len(relative_return.coords[ds.TIME]))
     min_periods = min(min_periods, max_periods)
     return relative_return.rolling({ds.TIME: max_periods}, min_periods=min_periods).std()
 
 
-def calc_volatility_annualized(relative_return, max_periods=252, min_periods=2):
+def calc_volatility_annualized(relative_return, max_periods=None, min_periods=2, points_per_year=None):
     """
     :param relative_return: daily return
     :param min_periods: minimal number of days
     :return: annualized volatility
     """
-    return calc_volatility(relative_return, max_periods, min_periods) * pow(252, 1. / 2)
+    if points_per_year is None:
+        points_per_year = calc_avg_points_per_year(relative_return)
+    if max_periods is None:
+        max_periods = points_per_year
+    return calc_volatility(relative_return, max_periods, min_periods, points_per_year=points_per_year) * pow(
+        points_per_year, 1. / 2)
 
 
 def calc_underwater(equity):
@@ -270,26 +288,34 @@ def calc_max_drawdown(underwater):
     return (underwater).rolling({ds.TIME: len(underwater)}, min_periods=1).min()
 
 
-def calc_sharpe_ratio_annualized(relative_return, max_periods=252, min_periods=2):
+def calc_sharpe_ratio_annualized(relative_return, max_periods=None, min_periods=2, points_per_year=None):
     """
     :param relative_return: daily return
     :param max_periods: maximal number of days
     :param min_periods: minimal number of days
     :return: annualized Sharpe ratio
     """
-    m = calc_mean_return_annualized(relative_return, max_periods, min_periods)
-    v = calc_volatility_annualized(relative_return, max_periods, min_periods)
+    if points_per_year is None:
+        points_per_year = calc_avg_points_per_year(relative_return)
+    if max_periods is None:
+        max_periods = points_per_year
+    m = calc_mean_return_annualized(relative_return, max_periods, min_periods, points_per_year=points_per_year)
+    v = calc_volatility_annualized(relative_return, max_periods, min_periods, points_per_year=points_per_year)
     sr = m / v
     return sr
 
 
-def calc_mean_return(relative_return, max_periods=252, min_periods=1):
+def calc_mean_return(relative_return, max_periods=None, min_periods=1, points_per_year=None):
     """
     :param relative_return: daily return
     :param max_periods: maximal number of days
     :param min_periods: minimal number of days
     :return: daily mean return
     """
+    if points_per_year is None:
+        points_per_year = calc_avg_points_per_year(relative_return)
+    if max_periods is None:
+        max_periods = points_per_year
     max_periods = min(max_periods, len(relative_return.coords[ds.TIME]))
     min_periods = min(min_periods, max_periods)
     return xr.ufuncs.exp(
@@ -297,14 +323,19 @@ def calc_mean_return(relative_return, max_periods=252, min_periods=1):
             skipna=True)) - 1
 
 
-def calc_mean_return_annualized(relative_returns, max_periods=252, min_periods=1):
+def calc_mean_return_annualized(relative_return, max_periods=None, min_periods=1, points_per_year=None):
     """
-    :param relative_returns: daily return
+    :param relative_return: daily return
     :param min_periods: minimal number of days
     :return: annualized mean return
     """
+    if points_per_year is None:
+        points_per_year = calc_avg_points_per_year(relative_return)
+    if max_periods is None:
+        max_periods = points_per_year
     power = func_np_to_xr(np.power)
-    return power(calc_mean_return(relative_returns, max_periods, min_periods) + 1, 252) - 1
+    return power(calc_mean_return(relative_return, max_periods, min_periods, points_per_year=points_per_year) + 1,
+                 points_per_year) - 1
 
 
 def calc_bias(portfolio_history, per_asset=False):
@@ -341,7 +372,8 @@ def calc_instruments(portfolio_history, per_asset=False):
     return ic
 
 
-def calc_avg_turnover(portfolio_history, equity, data, max_periods=252, min_periods=1, per_asset=False):
+def calc_avg_turnover(portfolio_history, equity, data, max_periods=None, min_periods=1, per_asset=False,
+                      points_per_year=None):
     '''
     Calculates average capital turnover, all args must be adjusted
     :param portfolio_history: history of portfolio changes
@@ -352,6 +384,11 @@ def calc_avg_turnover(portfolio_history, equity, data, max_periods=252, min_peri
     :param per_asset:
     :return:
     '''
+    if points_per_year is None:
+        points_per_year = calc_avg_points_per_year(portfolio_history)
+    if max_periods is None:
+        max_periods = points_per_year
+
     W = portfolio_history.transpose(ds.TIME, ds.ASSET)
     W = W.shift({ds.TIME: 1})
     W[0] = 0
@@ -404,6 +441,13 @@ def find_missed_dates(output, data):
     return np.array(np.setdiff1d(data_ts, out_ts))
 
 
+def calc_avg_points_per_year(data: xr.DataArray):
+    t = np.sort(data.coords[ds.TIME].values)
+    tp = np.roll(t, 1)
+    dh = (t[1:] - tp[1:]).mean().item() / (10 ** 9) / 60 / 60  # avg diff in hours
+    return round(365 * 24 / dh)
+
+
 def func_np_to_xr(origin_func):
     '''
     Decorates numpy function for xarray
@@ -436,7 +480,7 @@ stf = StatFields
 
 
 def calc_stat(data, portfolio_history, slippage_factor=0.05, min_periods=2,
-              max_periods=252 * 3, per_asset=False):
+              max_periods=None, per_asset=False, points_per_year=None):
     """
     :param data: xarray with historical data, data must be split adjusted
     :param portfolio_history: portfolio weights set for every day
@@ -446,10 +490,16 @@ def calc_stat(data, portfolio_history, slippage_factor=0.05, min_periods=2,
     :param per_asset: calculate stats per asset
     :return: xarray with all statistics
     """
+    if points_per_year is None:
+        points_per_year = calc_avg_points_per_year(data)
+    if max_periods is None:
+        max_periods = points_per_year * 3
+
     portfolio_history = sort_and_crop_output(portfolio_history, per_asset)
-    non_liquid = calc_non_liquid(data, portfolio_history)
-    if non_liquid is not None:
-        print("WARNING: Strategy trades non-liquid assets.")
+    if f.IS_LIQUID in data.coords[ds.FIELD]:
+        non_liquid = calc_non_liquid(data, portfolio_history)
+        if non_liquid is not None:
+            print("WARNING: Strategy trades non-liquid assets.")
 
     missed_dates = find_missed_dates(portfolio_history, data)
     if len(missed_dates) > 0:
@@ -458,15 +508,19 @@ def calc_stat(data, portfolio_history, slippage_factor=0.05, min_periods=2,
     RR = calc_relative_return(data, portfolio_history, slippage_factor, per_asset)
 
     E = calc_equity(RR)
-    V = calc_volatility_annualized(RR, max_periods=max_periods, min_periods=min_periods)
+    V = calc_volatility_annualized(RR, max_periods=max_periods, min_periods=min_periods,
+                                   points_per_year=points_per_year)
     U = calc_underwater(E)
     DD = calc_max_drawdown(U)
-    SR = calc_sharpe_ratio_annualized(RR, max_periods=max_periods, min_periods=min_periods)
-    MR = calc_mean_return_annualized(RR, max_periods=max_periods, min_periods=min_periods)
+    SR = calc_sharpe_ratio_annualized(RR, max_periods=max_periods, min_periods=min_periods,
+                                      points_per_year=points_per_year)
+    MR = calc_mean_return_annualized(RR, max_periods=max_periods, min_periods=min_periods,
+                                     points_per_year=points_per_year)
     (adj_data, adj_ph, ignored) = arrange_data(data, portfolio_history, E, per_asset)
     B = calc_bias(adj_ph, per_asset)
     I = calc_instruments(adj_ph, per_asset)
-    T = calc_avg_turnover(adj_ph, E, adj_data, min_periods=min_periods, max_periods=max_periods, per_asset=per_asset)
+    T = calc_avg_turnover(adj_ph, E, adj_data, min_periods=min_periods, max_periods=max_periods, per_asset=per_asset,
+                          points_per_year=points_per_year)
 
     stat = xr.concat([
         E, RR, V,
@@ -565,7 +619,8 @@ def print_correlation(portfolio_history, data):
     print("The max correlation value (with systems with a larger Sharpe ratio):", max([i['cofactor'] for i in cr_list]))
     my_cr = [i for i in cr_list if i['my']]
 
-    print("Current sharpe ratio(3y):", calc_sharpe_ratio_annualized(rr, 253 * 3)[-1].values.item())
+    print("Current sharpe ratio(3y):",
+          calc_sharpe_ratio_annualized(rr, calc_avg_points_per_year(data) * 3)[-1].values.item())
 
     print()
 
@@ -581,34 +636,40 @@ def print_correlation(portfolio_history, data):
 
 
 def calc_correlation(relative_returns):
-    ENGINE_CORRELATION_URL = get_env("ENGINE_CORRELATION_URL",
-                                     "http://localhost:8080/referee/submission/forCorrelation")
-    STATAN_CORRELATION_URL = get_env("STATAN_CORRELATION_URL", "http://localhost:8081/statan/correlation")
-    PARTICIPANT_ID = get_env("PARTICIPANT_ID", "0")
+    try:
 
-    with request.urlopen(ENGINE_CORRELATION_URL + "?participantId=" + PARTICIPANT_ID) as response:
-        submissions = response.read()
-        submissions = json.loads(submissions)
-        submission_ids = [s['id'] for s in submissions]
+        ENGINE_CORRELATION_URL = get_env("ENGINE_CORRELATION_URL",
+                                         "http://localhost:8080/referee/submission/forCorrelation")
+        STATAN_CORRELATION_URL = get_env("STATAN_CORRELATION_URL", "http://localhost:8081/statan/correlation")
+        PARTICIPANT_ID = get_env("PARTICIPANT_ID", "0")
 
-    rr = relative_returns.to_netcdf(compute=True)
-    rr = gzip.compress(rr)
-    rr = base64.b64encode(rr)
-    rr = rr.decode()
+        with request.urlopen(ENGINE_CORRELATION_URL + "?participantId=" + PARTICIPANT_ID) as response:
+            submissions = response.read()
+            submissions = json.loads(submissions)
+            submission_ids = [s['id'] for s in submissions]
 
-    r = {"relative_returns": rr, "submission_ids": submission_ids}
-    r = json.dumps(r)
-    r = r.encode()
+        rr = relative_returns.to_netcdf(compute=True)
+        rr = gzip.compress(rr)
+        rr = base64.b64encode(rr)
+        rr = rr.decode()
 
-    with request.urlopen(STATAN_CORRELATION_URL, r) as response:
-        cofactors = response.read()
-        cofactors = json.loads(cofactors)
+        r = {"relative_returns": rr, "submission_ids": submission_ids}
+        r = json.dumps(r)
+        r = r.encode()
 
-    result = []
-    for c in cofactors:
-        sub = next((s for s in submissions if str(c['id']) == str(s['id'])))
-        sub['cofactor'] = c['cofactor']
-        sub['sharpe_ratio'] = c['sharpe_ratio']
-        result.append(sub)
+        with request.urlopen(STATAN_CORRELATION_URL, r) as response:
+            cofactors = response.read()
+            cofactors = json.loads(cofactors)
 
-    return result
+        result = []
+        for c in cofactors:
+            sub = next((s for s in submissions if str(c['id']) == str(s['id'])))
+            sub['cofactor'] = c['cofactor']
+            sub['sharpe_ratio'] = c['sharpe_ratio']
+            result.append(sub)
+
+        return result
+    except:
+        import logging
+        logging.exception("network error")
+        return []

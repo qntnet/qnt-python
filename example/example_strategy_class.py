@@ -13,7 +13,6 @@ print(xr.DataArray(np.full([0, 10], np.nan), dims=[ds.TIME, ds.FIELD], coords={d
     stf.MEAN_RETURN, stf.BIAS, stf.INSTRUMENTS, stf.AVG_TURNOVER
 ]}))
 
-
 class SimpleStrategy:
     init_data_length = 14  # optional - data length for init
     need_fix_output = True

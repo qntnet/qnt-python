@@ -77,8 +77,8 @@ def beta(price_x, price_y, periods=252):
 def correlation(price_x, price_y, periods=252):
     rx = roc(price_x, 1) / 100
     ry = roc(price_y, 1) / 100
-    print(rx)
-    print(ry)
+    # print(rx)
+    # print(ry)
     return covariance(rx, ry, periods) / (std(ry, periods) * std(rx, periods))
 
 

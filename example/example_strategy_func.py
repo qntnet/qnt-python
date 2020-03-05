@@ -7,10 +7,8 @@ from qnt.data import ds, f, load_data, write_output, load_assets
 from qnt.stepper import test_strategy
 from qnt.stats import *
 
-
 def init(data):
     print("init")
-
 
 def step(data):
     assets = data.sel(**{ds.FIELD: f.OPEN})
