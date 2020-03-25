@@ -7,7 +7,7 @@ from .data import load_data, f, ds, write_output
 from .stats import calc_non_liquid
 
 class SimpleStrategy:
-    init_data_length = 0  # optional - data length for init
+    init_data_length = 0 # optional - data length for init
 
     def init(self, data):
         """
@@ -33,17 +33,17 @@ class SimpleStrategy:
         :return: xarray with next portfolio ticker -> fraction
         """
         assets = data.sel[f.OPEN][0].dropna(ds.ASSET).coords[ds.ASSET]
-        pct = 1. / len(assets)
+        pct = 1./len(assets)
         return xr.DataArray(
-            np.full([len(assets)], pct, dtype=np.float64),
-            dims=[ds.ASSET],
-            coords={ds.ASSET: assets}
+            np.full([len(assets)], pct, dtype = np.float64),
+            dims = [ds.ASSET],
+            coords = {ds.ASSET:assets}
         )
 
 
 class StrategyAdapter:
     def __init__(self, **kwargs):
-        for k, v in kwargs.items():
+        for k,v in kwargs.items():
             setattr(self, k, v)
 
 
@@ -60,7 +60,7 @@ def test_strategy(data, strategy=None, **kwargs):
         strategy = StrategyAdapter(**kwargs)
 
     init_data_length = 0
-    if (hasattr(strategy, "init_data_length")):
+    if(hasattr(strategy, "init_data_length")):
         init_data_length = strategy.init_data_length
 
     ts = data.coords[ds.TIME]
@@ -78,11 +78,11 @@ def test_strategy(data, strategy=None, **kwargs):
 
     portfolio_history = xr.DataArray(
         np.zeros([point_count, len(data.coords[ds.ASSET])], dtype=np.float64),
-        dims=[ds.TIME, ds.ASSET],
-        coords={
+        dims = [ds.TIME, ds.ASSET],
+        coords = {
             ds.TIME: data.coords[ds.TIME][init_data_length:(init_data_length + point_count):] if forward_order else
             data.coords[ds.TIME][0:point_count:][::-1],
-            ds.ASSET: data.coords[ds.ASSET]
+            ds.ASSET : data.coords[ds.ASSET]
         }
     )
     start_time = time.time()
@@ -123,7 +123,7 @@ calc_step_by_step = test_strategy
 
 # for testing purpose
 if __name__ == "__main__":
-    # print( os.path.abspath(os.curdir))
+    #print( os.path.abspath(os.curdir))
     data = load_data(assets=["NYSE:ATGE", "NYSE:AET"], min_date='2017-01-01', dims=(ds.TIME, ds.ASSET, ds.FIELD))
     output = test_strategy(data, SimpleStrategy())
     write_output(output)

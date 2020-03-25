@@ -421,14 +421,13 @@ def parse_date_and_hour(dt: tp.Union[None, str, datetime.datetime, datetime.date
     if dt is None:
         return datetime.datetime.now(tz=datetime.timezone.utc)
     if isinstance(dt, datetime.date):
-        return datetime.datetime(dt.year, dt.month, dt.day, datetime.timezone.utc)
+        return datetime.datetime(dt.year, dt.month, dt.day, tzinfo=datetime.timezone.utc)
     if isinstance(dt, datetime.datetime):
         dt = datetime.datetime.fromtimestamp(dt.timestamp(), tz=datetime.timezone.utc)  # rm timezone
         dt = dt.isoformat()
     if isinstance(dt, str):
         dt = dt.split(":")[0]
         if 'T' in dt:
-
             return datetime.datetime.strptime(dt + "Z+00:00", "%Y-%m-%dT%HZ%z")
         else:
             return datetime.datetime.strptime(dt + "Z+00:00", "%Y-%m-%dZ%z")

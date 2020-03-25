@@ -29,8 +29,8 @@ class SimpleStrategy:
         pct = 1. / max(len(assets), 1)
         return xr.DataArray(
             np.full([len(assets)], pct, dtype=np.float64),
-            dims=[ds.ASSET],
-            coords={ds.ASSET: assets}
+            dims = [ds.ASSET],
+            coords = {ds.ASSET:assets}
         )
 
 

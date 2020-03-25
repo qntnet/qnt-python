@@ -18,9 +18,9 @@ def step(data):
     assets = assets.coords[ds.ASSET]
     pct = 1. / max(len(assets), 1)
     return xr.DataArray(
-        np.full([len(assets)], pct, dtype=np.float64),
-        dims=[ds.ASSET],
-        coords={ds.ASSET: assets}
+        np.full([len(assets)], pct, dtype = np.float64),
+        dims = [ds.ASSET],
+        coords = {ds.ASSET:assets}
     )
 
 

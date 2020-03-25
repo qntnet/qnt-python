@@ -1,6 +1,6 @@
 package:
   name: "qnt"
-  version: "0.0.113"
+  version: "0.0.115"
 
 source:
   path: .
@@ -12,9 +12,9 @@ build:
 
 requirements:
   host:
-    - pip
-    - python=3.7.*
-    - setuptools
+  - pip
+  - python=3.7.*
+  - setuptools
 
   run:
     - scipy=1.4.1

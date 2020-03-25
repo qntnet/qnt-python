@@ -441,7 +441,14 @@ def calc_avg_holding_time(portfolio_history,  # equity, data,
     if max_periods is None:
         max_periods = points_per_year
 
-    log = calc_holding_log_np_nb(portfolio_history.values)  # , equity.values, data.sel(field='open').values)
+    ph = portfolio_history.copy(True)
+
+    try:
+        ph[-2] = 0  # avoids NaN for buy-and-hold
+    except:
+        pass
+
+    log = calc_holding_log_np_nb(ph.values)  # , equity.values, data.sel(field='open').values)
 
     log = xr.DataArray(log, dims=[ds.TIME, ds.FIELD, ds.ASSET], coords={
         ds.TIME: portfolio_history.time,
@@ -477,7 +484,6 @@ def calc_avg_holding_time(portfolio_history,  # equity, data,
     points_per_day = calc_points_per_day(points_per_year)
 
     return res / points_per_day
-
 
 @numba.jit
 def calc_holding_log_np_nb(weights: np.ndarray) -> np.ndarray:  # , equity: np.ndarray, open: np.ndarray) -> np.ndarray:

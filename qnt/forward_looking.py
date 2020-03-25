@@ -5,6 +5,7 @@ from qnt.data import sort_and_crop_output
 import datetime
 import qnt.data as qndata
 
+
 FORWARD_LOOKING_TEST_OFFSET = 182
 FORWARD_LOOKING_TEST_DELTA = 10 ** -7
 
