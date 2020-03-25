@@ -20,7 +20,7 @@ print(output[0, 0].item())
 
 print(qnstats.calc_slippage(data).to_pandas()[13:])
 
-stat2 = qnstats.calc_stat(data, output, slippage_factor=0.05)
+stat2 = qnstats.calc_stat(data, output, slippage_factor=0.05, per_asset=True)
 # ss = qnstats.calc_stat(data, output, max_periods=252 * 3, slippage_factor=0.05, per_asset=True)
 
 print(stat2.sel(field=[  # qnstats.stf.RELATIVE_RETURN,
@@ -30,6 +30,6 @@ print(stat2.sel(field=[  # qnstats.stf.RELATIVE_RETURN,
     # qnstats.stf.EQUITY,
     # qnstats.stf.MAX_DRAWDOWN
     qnstats.stf.AVG_HOLDINGTIME
-]).to_pandas())
+]).isel(asset=0).to_pandas())
 
 qndata.write_output(output)

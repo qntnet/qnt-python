@@ -117,8 +117,7 @@ def calc_relative_return_np_per_asset(WEIGHT, UNLOCKED, OPEN, CLOSE, SLIPPAGE, D
     # Ep = np.roll(E, 1, axis=0)
     Ep = E.copy()
     for i in range(1, Ep.shape[0]):
-        Ep[i - 1] = Ep[i]
-
+        Ep[i] = E[i-1]
     Ep[0] = 1
     RR = E / Ep - 1
     RR = np.where(np.isfinite(RR), RR, 0)
