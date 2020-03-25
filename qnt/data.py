@@ -282,6 +282,10 @@ def load_cryptocurrency_data(
         dims: tp.Tuple[str, str, str] = (ds.FIELD, ds.TIME, ds.ASSET),
         forward_order: bool = False
 ) -> tp.Union[None, xr.DataArray]:
+    if max_date is None and "LAST_DATA_PATH" in os.environ:
+        whole_data_file_flag_name = get_env("LAST_DATA_PATH", "last_data.txt")
+        with open(whole_data_file_flag_name, "w") as text_file:
+            text_file.write("last")
     if max_date is None:
         max_date = datetime_to_hours_str(datetime.datetime.now(tz=datetime.timezone.utc))
     min_date = parse_date_and_hour(min_date)

@@ -10,31 +10,38 @@ import numba
 
 EPS = 10 ** -7
 
-def calc_slippage(data, period=14, fract=0.05):
+
+def calc_slippage(data, period_days=14, fract=0.05, points_per_year=None):
     """
     :param data: xarray with historical data
-    :param period: lookback period
+    :param period_days: period for atr
     :param fract: slippage factor
     :return: xarray with slippage
     """
+    if points_per_year is None:
+        points_per_year = calc_avg_points_per_year(data)
+
     time_series = np.sort(data.coords[ds.TIME])
     data = data.transpose(ds.FIELD, ds.TIME, ds.ASSET).loc[[f.CLOSE, f.HIGH, f.LOW], time_series, :]
 
-    cl = data.loc[f.CLOSE].shift({ds.TIME: 1})
-    hi = data.loc[f.HIGH]
-    lo = data.loc[f.LOW]
+    points_per_day = calc_points_per_day(points_per_year)
+
+    cl = data.loc[f.CLOSE].shift({ds.TIME: points_per_day})
+    hi = data.loc[f.HIGH].rolling({ds.TIME: points_per_day}).max()
+    lo = data.loc[f.LOW].rolling({ds.TIME: points_per_day}).min()
     d1 = hi - lo
     d2 = abs(hi - cl)
     d3 = abs(cl - lo)
     dd = xr.concat([d1, d2, d3], dim='d').max(dim='d', skipna=False)
-    dd = dd.rolling({ds.TIME: period}, min_periods=period).mean(skipna=False).ffill(ds.TIME)
+    dd = dd.rolling({ds.TIME: period_days * points_per_day}, min_periods=period_days * points_per_day).mean(
+        skipna=False).ffill(ds.TIME)
     return dd * fract
 
 
-def calc_relative_return(data, portfolio_history, slippage_factor=0.05, per_asset=False):
+def calc_relative_return(data, portfolio_history, slippage_factor=0.05, per_asset=False, points_per_year=None):
     target_weights = portfolio_history.shift(**{ds.TIME: 1})[1:]  # shift and cut first point
 
-    slippage = calc_slippage(data, 14, slippage_factor)
+    slippage = calc_slippage(data, 14, slippage_factor, points_per_year=points_per_year)
 
     data, target_weights, slippage = arrange_data(data, target_weights, slippage, per_asset)
 
@@ -418,6 +425,94 @@ def calc_avg_turnover(portfolio_history, equity, data, max_periods=None, min_per
     return turnover
 
 
+def calc_avg_holding_time(portfolio_history,  # equity, data,
+                          max_periods=None, min_periods=1, per_asset=False, points_per_year=None):
+    '''
+    Calculates holding time.
+    :param portfolio_history:
+    :param max_periods:
+    :param min_periods:
+    :param per_asset:
+    :param points_per_year:
+    :return:
+    '''
+    if points_per_year is None:
+        points_per_year = calc_avg_points_per_year(portfolio_history)
+    if max_periods is None:
+        max_periods = points_per_year
+
+    log = calc_holding_log_np_nb(portfolio_history.values)  # , equity.values, data.sel(field='open').values)
+
+    log = xr.DataArray(log, dims=[ds.TIME, ds.FIELD, ds.ASSET], coords={
+        ds.TIME: portfolio_history.time,
+        ds.FIELD: ['cost', 'duration'],
+        ds.ASSET: portfolio_history.asset
+    })
+
+    if not per_asset:
+        log2d = log.isel(asset=0).copy(True)
+        log2d.loc[{ds.FIELD: 'cost'}] = log.sel(field='cost').sum(ds.ASSET)
+        log2d.loc[{ds.FIELD: 'duration'}] = (log.sel(field='cost') * log.sel(field='duration')).sum(ds.ASSET) / \
+                                            log2d.sel(field='cost')
+        log = log2d
+
+        try:
+            log = log.drop(ds.ASSET)
+        except ValueError:
+            pass
+
+    max_periods = min(max_periods, len(log.coords[ds.TIME]))
+    min_periods = min(min_periods, len(log.coords[ds.TIME]))
+
+    res = (log.sel(field='cost') * log.sel(field='duration')) \
+              .rolling({ds.TIME: max_periods}, min_periods=min_periods).sum() / \
+          log.sel(field='cost') \
+              .rolling({ds.TIME: max_periods}, min_periods=min_periods).sum()
+
+    try:
+        res = res.drop(ds.FIELD)
+    except ValueError:
+        pass
+
+    points_per_day = calc_points_per_day(points_per_year)
+
+    return res / points_per_day
+
+
+@numba.jit
+def calc_holding_log_np_nb(weights: np.ndarray) -> np.ndarray:  # , equity: np.ndarray, open: np.ndarray) -> np.ndarray:
+    prev_pos = np.zeros(weights.shape[1])
+    holding_time = np.zeros(weights.shape[1])  # position holding time
+    holding_log = np.zeros(weights.shape[0] * 2 * weights.shape[1])  # time, field (position_cost, holding_time), asset
+    holding_log = holding_log.reshape(weights.shape[0], 2, weights.shape[1])
+
+    for t in range(1, weights.shape[0]):
+        holding_time[:] += 1
+        for a in range(weights.shape[1]):
+            # price = open[t][a]
+            # if not np.isfinite(price):
+            #     continue
+            pos = weights[t - 1][a]  # * equity[t] / price
+            ppos = prev_pos[a]
+            if not np.isfinite(pos):
+                continue
+            dpos = pos - ppos
+            if abs(dpos) < EPS:
+                continue
+            if ppos > 0 > dpos or ppos < 0 < dpos:  # opposite change direction
+                if abs(dpos) > abs(ppos):
+                    holding_log[t][0][a] = abs(ppos)  # * price
+                    holding_log[t][1][a] = holding_time[a]
+                    holding_time[a] = 0
+                else:
+                    holding_log[t][0][a] = abs(dpos)  # * price
+                    holding_log[t][1][a] = holding_time[a]
+            elif pos != 0:
+                holding_time[a] = holding_time[a] * abs(ppos) / abs(pos)
+            prev_pos[a] = pos
+    return holding_log
+
+
 def calc_non_liquid(data, portfolio_history):
     (adj_data, adj_ph, ignored) = arrange_data(data, portfolio_history, None)
     if f.IS_LIQUID in list(adj_data.coords[ds.FIELD]):
@@ -445,7 +540,14 @@ def calc_avg_points_per_year(data: xr.DataArray):
     t = np.sort(data.coords[ds.TIME].values)
     tp = np.roll(t, 1)
     dh = (t[1:] - tp[1:]).mean().item() / (10 ** 9) / 60 / 60  # avg diff in hours
-    return round(365 * 24 / dh)
+    return round(365.25 * 24 / dh)
+
+
+def calc_points_per_day(days_per_year):
+    if days_per_year == 252:
+        return 1
+    else:
+        return 24
 
 
 def func_np_to_xr(origin_func):
@@ -474,13 +576,15 @@ class StatFields:
     BIAS = "bias"
     INSTRUMENTS = "instruments"
     AVG_TURNOVER = "avg_turnover"
+    AVG_HOLDINGTIME = 'avg_holding_time'
 
 
 stf = StatFields
 
 
-def calc_stat(data, portfolio_history, slippage_factor=0.05, min_periods=2,
-              max_periods=None, per_asset=False, points_per_year=None):
+def calc_stat(data, portfolio_history, slippage_factor=0.05,
+              min_periods=1, max_periods=None,
+              per_asset=False, points_per_year=None):
     """
     :param data: xarray with historical data, data must be split adjusted
     :param portfolio_history: portfolio weights set for every day
@@ -493,7 +597,7 @@ def calc_stat(data, portfolio_history, slippage_factor=0.05, min_periods=2,
     if points_per_year is None:
         points_per_year = calc_avg_points_per_year(data)
     if max_periods is None:
-        max_periods = points_per_year * 3
+        max_periods = (points_per_year * 3) if points_per_year == 252 else (points_per_year * 7)
 
     portfolio_history = sort_and_crop_output(portfolio_history, per_asset)
     if f.IS_LIQUID in data.coords[ds.FIELD]:
@@ -505,7 +609,7 @@ def calc_stat(data, portfolio_history, slippage_factor=0.05, min_periods=2,
     if len(missed_dates) > 0:
         print("WARNING: some dates are missed in the portfolio_history")
 
-    RR = calc_relative_return(data, portfolio_history, slippage_factor, per_asset)
+    RR = calc_relative_return(data, portfolio_history, slippage_factor, per_asset, points_per_year)
 
     E = calc_equity(RR)
     V = calc_volatility_annualized(RR, max_periods=max_periods, min_periods=min_periods,
@@ -522,14 +626,19 @@ def calc_stat(data, portfolio_history, slippage_factor=0.05, min_periods=2,
     T = calc_avg_turnover(adj_ph, E, adj_data, min_periods=min_periods, max_periods=max_periods, per_asset=per_asset,
                           points_per_year=points_per_year)
 
+    HT = calc_avg_holding_time(adj_ph,  # E, adj_data,
+                               min_periods=min_periods, max_periods=max_periods,
+                               per_asset=per_asset,
+                               points_per_year=points_per_year)
+
     stat = xr.concat([
         E, RR, V,
         U, DD, SR,
-        MR, B, I, T
+        MR, B, I, T, HT
     ], pd.Index([
         stf.EQUITY, stf.RELATIVE_RETURN, stf.VOLATILITY,
         stf.UNDERWATER, stf.MAX_DRAWDOWN, stf.SHARPE_RATIO,
-        stf.MEAN_RETURN, stf.BIAS, stf.INSTRUMENTS, stf.AVG_TURNOVER
+        stf.MEAN_RETURN, stf.BIAS, stf.INSTRUMENTS, stf.AVG_TURNOVER, stf.AVG_HOLDINGTIME
     ], name=ds.FIELD))
 
     dims = [ds.TIME, ds.FIELD]

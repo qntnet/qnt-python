@@ -29,6 +29,7 @@ print(stat2.sel(field=[  # qnstats.stf.RELATIVE_RETURN,
     qnstats.stf.SHARPE_RATIO,
     # qnstats.stf.EQUITY,
     # qnstats.stf.MAX_DRAWDOWN
+    qnstats.stf.AVG_HOLDINGTIME
 ]).to_pandas())
 
 qndata.write_output(output)
