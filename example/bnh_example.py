@@ -2,16 +2,20 @@ import qnt.data as qndata
 import qnt.stats as qnstats
 import qnt.forward_looking as qnfl
 import time
+from qnt.neutralization import neutralize
 
 data = qndata.load_data(
     min_date="2015-01-01", max_date="2018-01-01",
     forward_order=True,
                         dims=("time", "field", "asset"))
 
+assets = qndata.load_assets()
+
 print(qnstats.calc_avg_points_per_year(data))
 
 output = data.sel(field=qndata.f.IS_LIQUID)
 output = qndata.sort_and_crop_output(output)
+output = neutralize(output, assets, 'industry')
 
 output *= 1
 

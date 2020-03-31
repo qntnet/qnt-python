@@ -25,16 +25,19 @@ def calc_slippage(data, period_days=14, fract=0.05, points_per_year=None):
     data = data.transpose(ds.FIELD, ds.TIME, ds.ASSET).loc[[f.CLOSE, f.HIGH, f.LOW], time_series, :]
 
     points_per_day = calc_points_per_day(points_per_year)
+    daily_period = min(points_per_day, len(data.time))
 
-    cl = data.loc[f.CLOSE].shift({ds.TIME: points_per_day})
-    hi = data.loc[f.HIGH].rolling({ds.TIME: points_per_day}).max()
-    lo = data.loc[f.LOW].rolling({ds.TIME: points_per_day}).min()
+    cl = data.loc[f.CLOSE].shift({ds.TIME: daily_period})
+    hi = data.loc[f.HIGH].rolling({ds.TIME: daily_period}).max()
+    lo = data.loc[f.LOW].rolling({ds.TIME: daily_period}).min()
     d1 = hi - lo
     d2 = abs(hi - cl)
     d3 = abs(cl - lo)
     dd = xr.concat([d1, d2, d3], dim='d').max(dim='d', skipna=False)
-    dd = dd.rolling({ds.TIME: period_days * points_per_day}, min_periods=period_days * points_per_day).mean(
-        skipna=False).ffill(ds.TIME)
+
+    atr_period = min(len(dd.time), period_days * points_per_day)
+
+    dd = dd.rolling({ds.TIME: atr_period}, min_periods=atr_period).mean(skipna=False).ffill(ds.TIME)
     return dd * fract
 
 
@@ -549,7 +552,7 @@ def calc_avg_points_per_year(data: xr.DataArray):
 
 
 def calc_points_per_day(days_per_year):
-    if days_per_year == 252:
+    if days_per_year < 400:
         return 1
     else:
         return 24
