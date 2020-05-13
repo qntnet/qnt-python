@@ -217,7 +217,7 @@ def arrange_data(data, target_weights, additional_series=None, per_asset=False):
     weights_intersection = weights_intersection.where(np.isfinite(weights_intersection)).fillna(0)
 
     adjusted_tw.loc[time_intersected, assets] = weights_intersection
-    adjusted_tw = adjusted_tw.where(np.logical_not(np.isnan(adjusted_tw.values)), 0)
+    adjusted_tw = adjusted_tw.where(np.isfinite(adjusted_tw), 0)
     if f.IS_LIQUID in adjusted_data.coords[ds.FIELD]:
         adjusted_tw = adjusted_tw.where(adjusted_data.loc[f.IS_LIQUID] > 0, 0)
 
