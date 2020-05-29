@@ -7,8 +7,9 @@ import pandas as pd
 from qnt.stepper import test_strategy
 
 import xarray.ufuncs as xrf
+import datetime as dt
 
-data = qndata.load_cryptocurrency_data(min_date="2013-01-01", max_date=None, dims=("time", "field", "asset"),
+data = qndata.load_cryptocurrency_data(tail=dt.timedelta(days=252), max_date=None, dims=("time", "field", "asset"),
                                        forward_order=True).sel(asset=['BTC'])
 
 print(qnstats.calc_avg_points_per_year(data))
@@ -29,9 +30,15 @@ output[:] = 1
 # print(qnstats.calc_slippage(data).to_pandas()[13:])
 #
 stat2 = qnstats.calc_stat(data, output, slippage_factor=0.05)
-# # ss = qnstats.calc_stat(data, output, max_periods=252 * 3, slippage_factor=0.05, per_asset=True)
-#
+
 print(stat2.sel(field=[qnstats.stf.AVG_HOLDINGTIME, qnstats.stf.MEAN_RETURN, qnstats.stf.SHARPE_RATIO,
                        qnstats.stf.EQUITY]).to_pandas())
+
+s = qnstats.calc_stat(data, output, per_asset=True).sel(asset='BTC')
+
+print(s.sel(field=[qnstats.stf.AVG_HOLDINGTIME, qnstats.stf.MEAN_RETURN, qnstats.stf.SHARPE_RATIO,
+                       qnstats.stf.EQUITY]).to_pandas())
+
+
 #
 # qndata.write_output(output)

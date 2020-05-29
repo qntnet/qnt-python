@@ -46,12 +46,12 @@ TIMEOUT = 60
 
 def load_assets(
         min_date: tp.Union[str, datetime.date] = '2007-01-01',
-        max_date: tp.Union[str, datetime.date, None] = None
+        max_date: tp.Union[str, datetime.date, None] = None,
+        tail: tp.Union[datetime.timedelta, None] = None
 ):
     """
     :return: list of dicts with info for all tickers
     """
-    min_date = parse_date(min_date)
     max_date = parse_date(max_date)
 
     if MAX_DATE_LIMIT is not None:
@@ -59,6 +59,11 @@ def load_assets(
             max_date = min(MAX_DATE_LIMIT, max_date)
         else:
             max_date = MAX_DATE_LIMIT
+
+    if tail is None:
+        min_date = parse_date(min_date)
+    else:
+        min_date = max_date - tail
 
     if min_date > max_date:
         raise Exception("min_date must be less than or equal to max_date")
@@ -84,7 +89,8 @@ def load_data(
         min_date: tp.Union[str, datetime.date] = '2007-01-01',
         max_date: tp.Union[str, datetime.date, None] = None,
         dims: tp.Tuple[str, str, str] = (ds.FIELD, ds.TIME, ds.ASSET),
-        forward_order: bool = False
+        forward_order: bool = False,
+        tail: tp.Union[datetime.timedelta, None] = None
 ) -> xr.DataArray:
     """
     :param assets: list of ticker names to load
@@ -92,13 +98,14 @@ def load_data(
     :param max_date: last date of data
     :param dims: tuple with ds.FIELD, ds.TIME, ds.ASSET in the specified order
     :param forward_order: boolean, set true if you need the forward order of dates, otherwise the order is backward
+    :param tail: datetime.timedelta, tail size of data. min_date = max_date - tail
     :return: xarray DataArray with historical data for selected assets
     """
     if assets is None:
-        assets_array = load_assets(min_date=min_date, max_date=max_date)
+        assets_array = load_assets(min_date=min_date, max_date=max_date, tail=tail)
         assets = [a['id'] for a in assets_array]
     t = time.time()
-    data = load_origin_data(assets=assets, min_date=min_date, max_date=max_date)
+    data = load_origin_data(assets=assets, min_date=min_date, max_date=max_date, tail=tail)
     print("Data loaded " + str(round(time.time() - t)) + "s")
     if data is None:
         return None
@@ -187,7 +194,8 @@ def load_secgov_forms(
         facts: tp.Union[None, tp.List[str]] = None,
         skip_segment: bool = False,
         min_date: tp.Union[str, datetime.date] = '2007-01-01',
-        max_date: tp.Union[str, datetime.date, None] = None
+        max_date: tp.Union[str, datetime.date, None] = None,
+        tail: tp.Union[datetime.timedelta, None] = None
 ) -> tp.Generator[dict, None, None]:
     """
     Load SEC Forms (Fundamental data)
@@ -197,15 +205,28 @@ def load_secgov_forms(
     :param skip_segment: skip facts with segment
     :param min_date: min form date
     :param max_date: max form date
+    :param tail: datetime.timedelta, tail size of data. min_date = max_date - tail
     :return:
     """
+    max_date = parse_date(max_date)
+    if MAX_DATE_LIMIT is not None:
+        if max_date is not None:
+            max_date = min(MAX_DATE_LIMIT, max_date)
+        else:
+            max_date = MAX_DATE_LIMIT
+
+    if tail is None:
+        min_date = parse_date(min_date)
+    else:
+        min_date = max_date - tail
+
     params = {
         'ciks': ciks,
         'types': types,
         'facts': facts,
         'skip_segment': skip_segment,
-        'min_date': parse_date(min_date).isoformat(),
-        'max_date': parse_date(max_date).isoformat()
+        'min_date': min_date.isoformat(),
+        'max_date': max_date.isoformat()
     }
     go = True
     while go:
@@ -221,12 +242,12 @@ def load_secgov_forms(
 
 def load_index_list(
         min_date: tp.Union[str, datetime.date] = '2007-01-01',
-        max_date: tp.Union[str, datetime.date, None] = None
+        max_date: tp.Union[str, datetime.date, None] = None,
+        tail: tp.Union[datetime.timedelta, None] = None
 ) -> list:
     """
     :return: list of dicts with info for all indexes
     """
-    min_date = parse_date(min_date)
     max_date = parse_date(max_date)
 
     if MAX_DATE_LIMIT is not None:
@@ -234,6 +255,11 @@ def load_index_list(
             max_date = min(MAX_DATE_LIMIT, max_date)
         else:
             max_date = MAX_DATE_LIMIT
+
+    if tail is None:
+        min_date = parse_date(min_date)
+    else:
+        min_date = max_date - tail
 
     if min_date > max_date:
         raise Exception("min_date must be less than or equal to max_date")
@@ -255,12 +281,24 @@ def load_index_data(
         min_date: tp.Union[str, datetime.date] = '2007-01-01',
         max_date: tp.Union[str, datetime.date, None] = None,
         dims: tp.Tuple[str, str] = (ds.TIME, ds.ASSET),
-        forward_order: bool = False
+        forward_order: bool = False,
+        tail: tp.Union[datetime.timedelta, None] = None
 ) -> tp.Union[None, xr.DataArray]:
+    max_date = parse_date(max_date)
+    if MAX_DATE_LIMIT is not None:
+        if max_date is not None:
+            max_date = min(MAX_DATE_LIMIT, max_date)
+        else:
+            max_date = MAX_DATE_LIMIT
+    if tail is None:
+        min_date = parse_date(min_date)
+    else:
+        min_date = max_date - tail
+
     if ids is None:
         ids = load_index_list(min_date, max_date)
         ids = [i['id'] for i in ids]
-    params = {"ids": ids, "min_date": min_date, "max_date": max_date}
+    params = {"ids": ids, "min_date": min_date.isoformat(), "max_date": max_date.isoformat()}
     params = json.dumps(params)
     params = params.encode()
     raw = request_with_retry("idx/data", params)
@@ -280,7 +318,8 @@ def load_cryptocurrency_data(
         min_date: tp.Union[str, datetime.date, datetime.datetime] = '2007-01-01',
         max_date: tp.Union[str, datetime.date, datetime.datetime, None] = None,
         dims: tp.Tuple[str, str, str] = (ds.FIELD, ds.TIME, ds.ASSET),
-        forward_order: bool = False
+        forward_order: bool = False,
+        tail: tp.Union[datetime.timedelta, None] = None
 ) -> tp.Union[None, xr.DataArray]:
     if max_date is None and "LAST_DATA_PATH" in os.environ:
         whole_data_file_flag_name = get_env("LAST_DATA_PATH", "last_data.txt")
@@ -288,7 +327,18 @@ def load_cryptocurrency_data(
             text_file.write("last")
     if max_date is None:
         max_date = datetime_to_hours_str(datetime.datetime.now(tz=datetime.timezone.utc))
-    min_date = parse_date_and_hour(min_date)
+
+    if MAX_DATE_LIMIT is not None:
+        if max_date is not None:
+            max_date = min(MAX_DATE_LIMIT, max_date)
+        else:
+            max_date = MAX_DATE_LIMIT
+
+    if tail is None:
+        min_date = parse_date_and_hour(min_date)
+    else:
+        min_date = max_date - tail
+
     max_date = parse_date_and_hour(max_date)
     uri = "crypto?min_date=" + datetime_to_hours_str(min_date) + "&max_date=" + datetime_to_hours_str(max_date)
     raw = request_with_retry(uri, None)
@@ -306,7 +356,8 @@ def load_cryptocurrency_data(
 
 BATCH_LIMIT = 300000
 
-def load_origin_data(assets, min_date, max_date=None):
+
+def load_origin_data(assets, min_date, max_date=None, tail: tp.Union[datetime.timedelta, None] = None):
     assets = [translate_user_id_to_server_id(id) for id in assets]
     # load data from server
     if max_date is None and "LAST_DATA_PATH" in os.environ:
@@ -314,7 +365,6 @@ def load_origin_data(assets, min_date, max_date=None):
         with open(whole_data_file_flag_name, "w") as text_file:
             text_file.write("last")
 
-    min_date = parse_date(min_date)
     max_date = parse_date(max_date)
 
     if MAX_DATE_LIMIT is not None:
@@ -322,6 +372,11 @@ def load_origin_data(assets, min_date, max_date=None):
             max_date = min(MAX_DATE_LIMIT, max_date)
         else:
             max_date = MAX_DATE_LIMIT
+
+    if tail is None:
+        min_date = parse_date(min_date)
+    else:
+        min_date = max_date - tail
 
     # print(str(max_date))
 

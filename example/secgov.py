@@ -1,5 +1,6 @@
 import qnt.data as qndata
 import time
+import datetime as dt
 
 i = 0
 j = 0
@@ -13,7 +14,7 @@ for f in qndata.load_secgov_forms(
         #     'us-gaap:CommonStockSharesOutstanding'
         # ],
         # skip_segment=True,
-        min_date='2017-01-01'
+        tail=dt.timedelta(days=365)
 ):
     # print(f['url'], len(f['facts']))
     print(i, j, f['date'], time.time() - st)

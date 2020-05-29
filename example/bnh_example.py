@@ -3,11 +3,12 @@ import qnt.stats as qnstats
 import qnt.forward_looking as qnfl
 import time
 from qnt.neutralization import neutralize
+import datetime as dt
 
 data = qndata.load_data(
-    min_date="2015-01-01", max_date="2018-01-01",
+    tail=dt.timedelta(days=365*3),
     forward_order=True,
-                        dims=("time", "field", "asset"))
+    dims=("time", "field", "asset"))
 
 assets = qndata.load_assets()
 
