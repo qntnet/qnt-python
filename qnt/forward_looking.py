@@ -3,8 +3,7 @@ import xarray as xr
 import numpy as np
 from qnt.data import sort_and_crop_output
 import datetime
-import qnt.data as qndata
-
+import qnt.data.common as qdc
 
 FORWARD_LOOKING_TEST_OFFSET = 182
 FORWARD_LOOKING_TEST_DELTA = 10 ** -7
@@ -15,19 +14,19 @@ def load_data_calc_output_and_check_forward_looking(strategy):
     :param strategy: function with data loading and output calculation
     :return: whole output
     """
-    qndata.MAX_DATE_LIMIT = None
+    qdc.MAX_DATE_LIMIT = None
 
     print("Computing of the whole output...")
     whole_output = strategy()
 
     last_date = datetime.datetime.now().date()
     last_date = last_date - datetime.timedelta(days=FORWARD_LOOKING_TEST_OFFSET)
-    qndata.MAX_DATE_LIMIT = last_date
+    qdc.MAX_DATE_LIMIT = last_date
 
     print("Computing of the cropped output...")
     cropped_output = strategy()
 
-    qndata.MAX_DATE_LIMIT = None
+    qdc.MAX_DATE_LIMIT = None
 
     check_forward_looking(cropped_output, whole_output)
 

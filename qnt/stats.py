@@ -41,7 +41,8 @@ def calc_slippage(data, period_days=14, fract=0.05, points_per_year=None):
     return dd * fract
 
 
-def calc_relative_return(data, portfolio_history, slippage_factor=0.05, per_asset=False, points_per_year=None):
+def calc_relative_return(data, portfolio_history, slippage_factor=0.05, roll_slippage_factor=0.02,
+                         per_asset=False, points_per_year=None):
     target_weights = portfolio_history.shift(**{ds.TIME: 1})[1:]  # shift and cut first point
 
     slippage = calc_slippage(data, 14, slippage_factor, points_per_year=points_per_year)
@@ -54,6 +55,8 @@ def calc_relative_return(data, portfolio_history, slippage_factor=0.05, per_asse
     OPEN = D.loc[f.OPEN].ffill(ds.TIME).fillna(0)
     CLOSE = D.loc[f.CLOSE].ffill(ds.TIME).fillna(0)
     DIVS = D.loc[f.DIVS].fillna(0) if f.DIVS in D.coords[ds.FIELD] else xr.full_like(D.loc[f.CLOSE], 0)
+    ROLL = D.loc[f.ROLL].fillna(0) if f.ROLL in D.coords[ds.FIELD] else None
+    ROLL_SLIPPAGE = slippage.where(ROLL > 0).fillna(0) * roll_slippage_factor / slippage_factor if ROLL is not None else None
 
     # boolean matrix when assets available for trading
     UNLOCKED = np.logical_and(np.isfinite(D.loc[f.OPEN].values), np.isfinite(D.loc[f.CLOSE].values))
@@ -64,7 +67,10 @@ def calc_relative_return(data, portfolio_history, slippage_factor=0.05, per_asse
     if per_asset:
         RR = W.copy(True)
         RR[:] = calc_relative_return_np_per_asset(W.values, UNLOCKED.values, OPEN.values, CLOSE.values, slippage.values,
-                                                  DIVS.values)
+                                                  DIVS.values,
+                                                  ROLL.values if ROLL is not None else None,
+                                                  ROLL_SLIPPAGE.values if ROLL_SLIPPAGE is not None else None
+                                                  )
         return RR
     else:
         RR = xr.DataArray(
@@ -73,13 +79,16 @@ def calc_relative_return(data, portfolio_history, slippage_factor=0.05, per_asse
             coords={ds.TIME: W.coords[ds.TIME]}
         )
         res = calc_relative_return_np(W.values, UNLOCKED.values, OPEN.values, CLOSE.values, slippage.values,
-                                      DIVS.values)
+                                      DIVS.values,
+                                      ROLL.values if ROLL is not None else None,
+                                      ROLL_SLIPPAGE.values if ROLL_SLIPPAGE is not None else None
+                                      )
         RR[:] = res
         return RR
 
 
 @numba.njit
-def calc_relative_return_np_per_asset(WEIGHT, UNLOCKED, OPEN, CLOSE, SLIPPAGE, DIVS):
+def calc_relative_return_np_per_asset(WEIGHT, UNLOCKED, OPEN, CLOSE, SLIPPAGE, DIVS, ROLL, ROLL_SLIPPAGE):
     N = np.zeros(WEIGHT.shape)  # shares count
 
     equity_before_buy = np.zeros(WEIGHT.shape)
@@ -116,6 +125,11 @@ def calc_relative_return_np_per_asset(WEIGHT, UNLOCKED, OPEN, CLOSE, SLIPPAGE, D
             equity_before_buy[t][locked] = equity_before_buy[t - 1][locked]
             equity_tonight[t][locked] = equity_tonight[t - 1][locked]
 
+        if ROLL is not None and t > 0:
+            pN = np.where(np.sign(N[t]) == np.sign(N[t-1]), np.minimum(np.abs(N[t]), np.abs(N[t-1])), 0)
+            R = pN * (ROLL[t] + ROLL_SLIPPAGE[t])
+            equity_after_buy[t] -= R
+
     E = equity_tonight
     # Ep = np.roll(E, 1, axis=0)
     Ep = E.copy()
@@ -128,7 +142,7 @@ def calc_relative_return_np_per_asset(WEIGHT, UNLOCKED, OPEN, CLOSE, SLIPPAGE, D
 
 
 @numba.njit
-def calc_relative_return_np(WEIGHT, UNLOCKED, OPEN, CLOSE, SLIPPAGE, DIVS):
+def calc_relative_return_np(WEIGHT, UNLOCKED, OPEN, CLOSE, SLIPPAGE, DIVS, ROLL, ROLL_SLIPPAGE):
     N = np.zeros(WEIGHT.shape)  # shares count
 
     equity_before_buy = np.zeros(WEIGHT.shape[0])
@@ -163,6 +177,11 @@ def calc_relative_return_np(WEIGHT, UNLOCKED, OPEN, CLOSE, SLIPPAGE, DIVS):
                 dN = dN - N[t - 1][unlocked]
             S = np.nansum(SLIPPAGE[t][unlocked] * np.abs(dN))  # slippage for this step
             equity_after_buy[t] = equity_before_buy[t] - S
+
+        if ROLL is not None and t > 0:
+            pN = np.where(np.sign(N[t]) == np.sign(N[t-1]), np.minimum(np.abs(N[t]), np.abs(N[t-1])), 0)
+            R = pN * (ROLL[t] + ROLL_SLIPPAGE[t])
+            equity_after_buy[t] -= np.nansum(R)
 
         equity_tonight[t] = equity_after_buy[t] + np.nansum((CLOSE[t] - OPEN[t]) * N[t])
 
@@ -590,7 +609,7 @@ class StatFields:
 stf = StatFields
 
 
-def calc_stat(data, portfolio_history, slippage_factor=0.05,
+def calc_stat(data, portfolio_history, slippage_factor=0.05, roll_slippage_factor=0.02,
               min_periods=1, max_periods=None,
               per_asset=False, points_per_year=None):
     """
@@ -617,7 +636,7 @@ def calc_stat(data, portfolio_history, slippage_factor=0.05,
     if len(missed_dates) > 0:
         print("WARNING: some dates are missed in the portfolio_history")
 
-    RR = calc_relative_return(data, portfolio_history, slippage_factor, per_asset, points_per_year)
+    RR = calc_relative_return(data, portfolio_history, slippage_factor, roll_slippage_factor, per_asset, points_per_year)
 
     E = calc_equity(RR)
     V = calc_volatility_annualized(RR, max_periods=max_periods, min_periods=min_periods,

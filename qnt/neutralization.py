@@ -1,3 +1,5 @@
+import warnings
+
 def neutralize(weights, assets, group = 'market'):
     """
     :param weights: xarray with weights of the algorithm
@@ -17,13 +19,15 @@ def neutralize(weights, assets, group = 'market'):
         groups = set(a.get(group) for a in assets)
         groups = dict((g, [a['id'] for a in assets if a.get(group) == g]) for g in groups)
 
-
         for j in groups.keys():
-            result.loc[{'asset':groups[j]}] = result.sel(asset = groups[j]) - result.sel(asset = groups[j]).mean('asset')
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", category=RuntimeWarning)
+                result.loc[{'asset':groups[j]}] = result.sel(asset = groups[j]) - result.sel(asset = groups[j]).mean('asset')
 
     elif group == 'market':
-        result = result - result.mean('asset')
-
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=RuntimeWarning)
+            result = result - result.mean('asset')
     else:
         raise Exception(f"No such group '{group}'. Use 'market', 'sector' or 'industry' instead.")
 
