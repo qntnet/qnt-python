@@ -48,3 +48,5 @@ stat = qnstats.calc_stat(data, output, max_periods=252 * 3)
 print(stat.to_pandas())
 
 qndata.write_output(output)
+
+qnstats.check_exposure(output)

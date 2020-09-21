@@ -809,3 +809,67 @@ def calc_correlation(relative_returns):
         import logging
         logging.exception("network error")
         return []
+
+
+def check_exposure(portfolio_history,
+                   soft_limit=0.05, hard_limit=0.1,
+                   days_tolerance=0.02, excess_tolerance=0.02,
+                   avg_period=252, check_period=252*3
+                   ):
+    """
+    Checks exposure according to the submission filters.
+    :param portfolio_history: output DataArray
+    :param soft_limit: soft limit for exposure
+    :param hard_limit: hard limit for exposure
+    :param days_tolerance: the number of days when exposure may be in range 0.05..0.1
+    :param excess_tolerance: max allowed average excess
+    :param avg_period: period for the ratio calculation
+    :param check_period: period for checking
+    :return:
+    """
+    portfolio_history = portfolio_history.loc[{ds.TIME:np.sort(portfolio_history.coords[ds.TIME])}]
+
+    exposure = calc_exposure(portfolio_history)
+    max_exposure = exposure.max(ds.ASSET)
+
+    max_exposure_over_limit = max_exposure.where(max_exposure > soft_limit).dropna(ds.TIME)
+    if len(max_exposure_over_limit) > 0:
+        max_exposure_asset = exposure.sel({ds.TIME: max_exposure_over_limit.coords[ds.TIME]}).idxmax(ds.ASSET)
+        print("Positions with max exposure over than the limit:")
+        pos = xr.concat([max_exposure_over_limit, max_exposure_asset], pd.Index(['exposure', 'asset'], name='field'))
+        print(pos.to_pandas().T)
+
+    min_periods = min(avg_period, len(portfolio_history.coords[ds.TIME]))
+
+    bad_days = xr.where(max_exposure > soft_limit, 1.0, 0.0)
+    bad_days_proportion = bad_days[-check_period:].rolling({ds.TIME: avg_period}, min_periods=min_periods).mean()
+    days_ok = xr.where(bad_days_proportion > days_tolerance, 1, 0).sum().values == 0
+
+    excess = exposure - soft_limit
+    excess = excess.where(excess > 0, 0).sum(ds.ASSET)
+    excess = excess[-check_period:].rolling({ds.TIME: avg_period}, min_periods=min_periods).mean()
+    excess_ok = xr.where(excess > excess_tolerance, 1, 0).sum().values == 0
+
+    hard_limit_ok = xr.where(max_exposure > hard_limit, 1, 0).sum().values == 0
+
+    if hard_limit_ok and (days_ok == 0 or excess_ok == 0):
+        print("Ok. The exposure check succeed.")
+        return True
+    else:
+        print("WARNING! The exposure check failed.")
+        print("Hard limit check: ", hard_limit_ok)
+        print("Days check: ", days_ok)
+        print("Excess check:", excess_ok)
+        return False
+
+
+def calc_exposure(portfolio_history):
+    """
+    Calculates exposure per position (range: 0..1)
+    :param portfolio_history:
+    :return:
+    """
+    sum = abs(portfolio_history).sum(ds.ASSET)
+    sum = sum.where(sum > EPS)
+    return abs(portfolio_history) / sum
+

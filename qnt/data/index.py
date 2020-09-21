@@ -1,6 +1,45 @@
 from qnt.data.common import *
 
 
+def load_major_index_list():
+    uri = "major-idx/list"
+    js = request_with_retry(uri, None)
+    js = js.decode()
+    idx = json.loads(js)
+    return idx
+
+
+def load_major_index_data(
+        min_date: tp.Union[str, datetime.date] = '2007-01-01',
+        max_date: tp.Union[str, datetime.date, None] = None,
+        tail: tp.Union[datetime.timedelta, None] = None,
+        dims: tp.Tuple[str, str, str] = (ds.FIELD, ds.TIME, ds.ASSET),
+        forward_order: bool = False,
+):
+    max_date = parse_date(max_date)
+
+    if MAX_DATE_LIMIT is not None:
+        if max_date is not None:
+            max_date = min(MAX_DATE_LIMIT, max_date)
+        else:
+            max_date = MAX_DATE_LIMIT
+
+    if tail is None:
+        min_date = parse_date(min_date)
+    else:
+        min_date = max_date - tail
+
+    uri = "major-idx/data?min_date=" + str(min_date) + "&max_date=" + str(max_date)
+    raw = request_with_retry(uri, None)
+
+    arr = xr.open_dataarray(raw, cache=True, decode_times=True)
+    arr = arr.compute()
+
+    if forward_order:
+        arr = arr.sel(**{ds.TIME: slice(None, None, -1)})
+    return arr.transpose(*dims)
+
+
 def load_index_list(
         min_date: tp.Union[str, datetime.date] = '2007-01-01',
         max_date: tp.Union[str, datetime.date, None] = None,

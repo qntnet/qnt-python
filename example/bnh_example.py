@@ -5,12 +5,13 @@ import time
 from qnt.neutralization import neutralize
 import datetime as dt
 
+assets = qndata.load_assets()
+
 data = qndata.load_data(
+    assets=[a['id'] for a in assets[:200]],
     tail=dt.timedelta(days=365*3),
     forward_order=True,
     dims=("time", "field", "asset"))
-
-assets = qndata.load_assets()
 
 print(qnstats.calc_avg_points_per_year(data))
 
@@ -25,16 +26,20 @@ print(output[0, 0].item())
 
 print(qnstats.calc_slippage(data).to_pandas()[13:])
 
-stat2 = qnstats.calc_stat(data, output, slippage_factor=0.05, per_asset=True)
-# ss = qnstats.calc_stat(data, output, max_periods=252 * 3, slippage_factor=0.05, per_asset=True)
-
-print(stat2.sel(field=[  # qnstats.stf.RELATIVE_RETURN,
-    qnstats.stf.MEAN_RETURN,
-    # qnstats.stf.VOLATILITY,
-    qnstats.stf.SHARPE_RATIO,
-    # qnstats.stf.EQUITY,
-    # qnstats.stf.MAX_DRAWDOWN
-    qnstats.stf.AVG_HOLDINGTIME
-]).isel(asset=0).to_pandas())
+# stat2 = qnstats.calc_stat(data, output, slippage_factor=0.05, per_asset=True)
+# # ss = qnstats.calc_stat(data, output, max_periods=252 * 3, slippage_factor=0.05, per_asset=True)
+#
+# print(stat2.sel(field=[  # qnstats.stf.RELATIVE_RETURN,
+#     qnstats.stf.MEAN_RETURN,
+#     # qnstats.stf.VOLATILITY,
+#     qnstats.stf.SHARPE_RATIO,
+#     # qnstats.stf.EQUITY,
+#     # qnstats.stf.MAX_DRAWDOWN
+#     qnstats.stf.AVG_HOLDINGTIME
+# ]).isel(asset=0).to_pandas())
 
 qndata.write_output(output)
+
+qnstats.check_exposure(output[::-1,::-1])
+
+

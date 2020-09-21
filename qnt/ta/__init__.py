@@ -1,7 +1,7 @@
 # Moving Averages
 from qnt.ta.sma import sma
 from qnt.ta.ema import ema, wilder_ma, dema, tema
-from qnt.ta.wma import wma
+from qnt.ta.wma import wma, lwma, vwma
 
 # Oscillators
 from qnt.ta.stochastic import stochastic_k, stochastic, slow_stochastic
