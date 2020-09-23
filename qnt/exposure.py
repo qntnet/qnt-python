@@ -2,9 +2,9 @@ import qnt.stats as qnstats
 import xarray as xr
 
 
-def drop_bad_days(weights):
+def drop_bad_days(weights, max_weight = 0.049):
     exposure = qnstats.calc_exposure(weights)
-    return weights.where(exposure.max('asset') < 0.049, 0)
+    return weights.where(exposure.max('asset') < max_weight, 0)
 
 
 def mix_weights(primary, secondary, max_weight = 0.049):
