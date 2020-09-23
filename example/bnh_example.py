@@ -4,12 +4,21 @@ import qnt.forward_looking as qnfl
 import time
 from qnt.neutralization import neutralize
 import datetime as dt
+import qnt.exposure as qne
 
 assets = qndata.load_assets()
 
 data = qndata.load_data(
-    assets=[a['id'] for a in assets[:200]],
-    tail=dt.timedelta(days=365*3),
+    assets=[a['id'] for a in assets[-15:]],
+    max_date='2020-03-01',
+    tail=dt.timedelta(days=365),
+    forward_order=True,
+    dims=("time", "field", "asset"))
+
+data_b = qndata.load_data(
+    # assets=[a['id'] for a in assets[:2000]],
+    max_date='2020-03-01',
+    tail=dt.timedelta(days=365),
     forward_order=True,
     dims=("time", "field", "asset"))
 
@@ -24,7 +33,7 @@ output *= 1
 print(output.to_pandas())
 print(output[0, 0].item())
 
-print(qnstats.calc_slippage(data).to_pandas()[13:])
+#print(qnstats.calc_slippage(data).to_pandas()[-100:])
 
 # stat2 = qnstats.calc_stat(data, output, slippage_factor=0.05, per_asset=True)
 # # ss = qnstats.calc_stat(data, output, max_periods=252 * 3, slippage_factor=0.05, per_asset=True)
@@ -38,8 +47,16 @@ print(qnstats.calc_slippage(data).to_pandas()[13:])
 #     qnstats.stf.AVG_HOLDINGTIME
 # ]).isel(asset=0).to_pandas())
 
-qndata.write_output(output)
+#output = qne.drop_bad_days(output)
 
-qnstats.check_exposure(output[::-1,::-1])
+out2 = data_b.sel(field='is_liquid')
+
+qnstats.check_exposure(output)
+
+print("mix")
+
+mix = qne.mix_weights(output, data_b.sel(field='is_liquid'))
+
+qnstats.check_exposure(mix)
 
 

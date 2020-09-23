@@ -835,24 +835,24 @@ def check_exposure(portfolio_history,
     max_exposure_over_limit = max_exposure.where(max_exposure > soft_limit).dropna(ds.TIME)
     if len(max_exposure_over_limit) > 0:
         max_exposure_asset = exposure.sel({ds.TIME: max_exposure_over_limit.coords[ds.TIME]}).idxmax(ds.ASSET)
-        print("Positions with max exposure over than the limit:")
+        print("Positions with max exposure over the limit:")
         pos = xr.concat([max_exposure_over_limit, max_exposure_asset], pd.Index(['exposure', 'asset'], name='field'))
         print(pos.to_pandas().T)
 
-    min_periods = min(avg_period, len(portfolio_history.coords[ds.TIME]))
+    periods = min(avg_period, len(portfolio_history.coords[ds.TIME]))
 
     bad_days = xr.where(max_exposure > soft_limit, 1.0, 0.0)
-    bad_days_proportion = bad_days[-check_period:].rolling({ds.TIME: avg_period}, min_periods=min_periods).mean()
+    bad_days_proportion = bad_days[-check_period:].rolling(dim={ds.TIME: periods}).mean()
     days_ok = xr.where(bad_days_proportion > days_tolerance, 1, 0).sum().values == 0
 
     excess = exposure - soft_limit
     excess = excess.where(excess > 0, 0).sum(ds.ASSET)
-    excess = excess[-check_period:].rolling({ds.TIME: avg_period}, min_periods=min_periods).mean()
+    excess = excess[-check_period:].rolling(dim={ds.TIME: periods}).mean()
     excess_ok = xr.where(excess > excess_tolerance, 1, 0).sum().values == 0
 
     hard_limit_ok = xr.where(max_exposure > hard_limit, 1, 0).sum().values == 0
 
-    if hard_limit_ok and (days_ok == 0 or excess_ok == 0):
+    if hard_limit_ok and (days_ok or excess_ok):
         print("Ok. The exposure check succeed.")
         return True
     else:
@@ -870,6 +870,6 @@ def calc_exposure(portfolio_history):
     :return:
     """
     sum = abs(portfolio_history).sum(ds.ASSET)
-    sum = sum.where(sum > EPS)
+    sum = sum.where(sum > EPS, 1) # prevents div by zero
     return abs(portfolio_history) / sum
 
