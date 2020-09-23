@@ -422,100 +422,44 @@ standard_indicator_builders = [
     InstantIndicatorBuilder('shares', ['us-gaap:CommonStockSharesOutstanding', 'us-gaap:CommonStockSharesIssued'], True),
     InstantIndicatorBuilder('ppent', ['us-gaap:PropertyPlantAndEquipmentNet'], True),
     InstantIndicatorBuilder('cash_equivalent', ['us-gaap:CashAndCashEquivalentsAtCarryingValue'], True),
-    #period ltm
-    PeriodIndicatorBuilder('sales_revenue_ltm', [
+    #period
+    PeriodIndicatorBuilder('sales_revenue', [
         'us-gaap:SalesRevenueGoodsNet',
         'us-gaap:SalesRevenueNet',
         'us-gaap:RevenueFromContractWithCustomerIncludingAssessedTax'
     ], True, 'ltm'),
-    PeriodIndicatorBuilder('total_revenue_ltm', ['us-gaap:Revenues'], True, 'ltm'),
-    PeriodIndicatorBuilder('capex_ltm', ['us-gaap:CapitalExpenditureDiscontinuedOperations'], True, 'ltm'),
-    PeriodIndicatorBuilder('cashflow_op_ltm', [
+    PeriodIndicatorBuilder('total_revenue', ['us-gaap:Revenues'], True, 'ltm'),
+    PeriodIndicatorBuilder('capex', ['us-gaap:CapitalExpenditureDiscontinuedOperations'], True, 'ltm'),
+    PeriodIndicatorBuilder('cashflow_op', [
         'us-gaap:OtherOperatingActivitiesCashFlowStatement',
         'us-gaap:NetCashProvidedByUsedInOperatingActivities',
         'us-gaap:NetCashProvidedByUsedInOperatingActivitiesContinuingOperations'
     ], True, 'ltm'),
-    PeriodIndicatorBuilder('cogs_ltm', [
+    PeriodIndicatorBuilder('cogs', [
         'us-gaap:CostOfGoodsAndServicesSold',
         'us-gaap:CostOfGoodsSold',
         'us-gaap:CostOfRevenue'
     ], True, 'ltm'),
-    PeriodIndicatorBuilder('divs_ltm', ['us-gaap:Dividends'], True, 'ltm'),
-    PeriodIndicatorBuilder('eps_ltm', [
+    PeriodIndicatorBuilder('divs', ['us-gaap:Dividends'], True, 'ltm'),
+    PeriodIndicatorBuilder('eps', [
         'us-gaap:EarningsPerShareDiluted',
         'us-gaap:EarningsPerShare'
     ], True, 'ltm'),
-    PeriodIndicatorBuilder('income_ltm', ['us-gaap:NetIncomeLoss'], True, 'ltm'),
-    PeriodIndicatorBuilder('interest_expense_ltm', ['us-gaap:InterestExpense'], True, 'ltm'),
-    PeriodIndicatorBuilder('operating_expense_ltm', ['us-gaap:OperatingExpenses'], True, 'ltm'),
-    PeriodIndicatorBuilder('operating_income_ltm', ['us-gaap:OperatingIncomeLoss'], True, 'ltm'),
-    PeriodIndicatorBuilder('rd_expense_ltm', ['us-gaap:ResearchAndDevelopmentExpense'], True, 'ltm'),
-    PeriodIndicatorBuilder('retained_earnings_ltm', ['us-gaap:PostconfirmationRetainedEarningsDeficit'], True, 'ltm'),
-    PeriodIndicatorBuilder('sales_ps_ltm', ['us-gaap:EarningsPerShareBasic'], True, 'ltm'),
-    PeriodIndicatorBuilder('sga_expense_ltm', ['us-gaap:SellingGeneralAndAdministrativeExpense'], True, 'ltm'),
-    #period af
-    PeriodIndicatorBuilder('sales_revenue_af', [
-        'us-gaap:SalesRevenueGoodsNet',
-        'us-gaap:SalesRevenueNet',
-        'us-gaap:RevenueFromContractWithCustomerIncludingAssessedTax'
-    ], True, 'af'),
-    PeriodIndicatorBuilder('total_revenue_af', ['us-gaap:Revenues'], True, 'af'),
-    PeriodIndicatorBuilder('capex_af', ['us-gaap:CapitalExpenditureDiscontinuedOperations'], True, 'af'),
-    PeriodIndicatorBuilder('cashflow_op_af', [
-        'us-gaap:OtherOperatingActivitiesCashFlowStatement',
-        'us-gaap:NetCashProvidedByUsedInOperatingActivities',
-        'us-gaap:NetCashProvidedByUsedInOperatingActivitiesContinuingOperations'
-    ], True, 'af'),
-    PeriodIndicatorBuilder('cogs_af', [
-        'us-gaap:CostOfGoodsAndServicesSold',
-        'us-gaap:CostOfGoodsSold',
-        'us-gaap:CostOfRevenue'
-    ], True, 'af'),
-    PeriodIndicatorBuilder('divs_af', ['us-gaap:Dividends'], True, 'af'),
-    PeriodIndicatorBuilder('eps_af', [
-        'us-gaap:EarningsPerShareDiluted',
-        'us-gaap:EarningsPerShare'
-    ], True, 'af'),
-    PeriodIndicatorBuilder('income_af', ['us-gaap:NetIncomeLoss'], True, 'af'),
-    PeriodIndicatorBuilder('interest_expense_af', ['us-gaap:InterestExpense'], True, 'af'),
-    PeriodIndicatorBuilder('operating_expense_af', ['us-gaap:OperatingExpenses'], True, 'af'),
-    PeriodIndicatorBuilder('operating_income_af', ['us-gaap:OperatingIncomeLoss'], True, 'af'),
-    PeriodIndicatorBuilder('rd_expense_af', ['us-gaap:ResearchAndDevelopmentExpense'], True, 'af'),
-    PeriodIndicatorBuilder('retained_earnings_af', ['us-gaap:PostconfirmationRetainedEarningsDeficit'], True, 'af'),
-    PeriodIndicatorBuilder('sales_ps_af', ['us-gaap:EarningsPerShareBasic'], True, 'af'),
-    PeriodIndicatorBuilder('sga_expense_af', ['us-gaap:SellingGeneralAndAdministrativeExpense'], True, 'af'),
-    #period qf
-    PeriodIndicatorBuilder('sales_revenue_qf', [
-        'us-gaap:SalesRevenueGoodsNet',
-        'us-gaap:SalesRevenueNet',
-        'us-gaap:RevenueFromContractWithCustomerIncludingAssessedTax'
-    ], True, 'qf'),
-    PeriodIndicatorBuilder('total_revenue_qf', ['us-gaap:Revenues'], True, 'qf'),
-    PeriodIndicatorBuilder('capex_qf', ['us-gaap:CapitalExpenditureDiscontinuedOperations'], True, 'qf'),
-    PeriodIndicatorBuilder('cashflow_op_qf', [
-        'us-gaap:OtherOperatingActivitiesCashFlowStatement',
-        'us-gaap:NetCashProvidedByUsedInOperatingActivities',
-        'us-gaap:NetCashProvidedByUsedInOperatingActivitiesContinuingOperations'
-    ], True, 'qf'),
-    PeriodIndicatorBuilder('cogs_qf', [
-        'us-gaap:CostOfGoodsAndServicesSold',
-        'us-gaap:CostOfGoodsSold',
-        'us-gaap:CostOfRevenue'
-    ], True, 'qf'),
-    PeriodIndicatorBuilder('divs_qf', ['us-gaap:Dividends'], True, 'qf'),
-    PeriodIndicatorBuilder('eps_qf', [
-        'us-gaap:EarningsPerShareDiluted',
-        'us-gaap:EarningsPerShare'
-    ], True, 'qf'),
-    PeriodIndicatorBuilder('income_qf', ['us-gaap:NetIncomeLoss'], True, 'qf'),
-    PeriodIndicatorBuilder('interest_expense_qf', ['us-gaap:InterestExpense'], True, 'qf'),
-    PeriodIndicatorBuilder('operating_expense_qf', ['us-gaap:OperatingExpenses'], True, 'qf'),
-    PeriodIndicatorBuilder('operating_income_qf', ['us-gaap:OperatingIncomeLoss'], True, 'qf'),
-    PeriodIndicatorBuilder('rd_expense_qf', ['us-gaap:ResearchAndDevelopmentExpense'], True, 'qf'),
-    PeriodIndicatorBuilder('retained_earnings_qf', ['us-gaap:PostconfirmationRetainedEarningsDeficit'], True, 'qf'),
-    PeriodIndicatorBuilder('sales_ps_qf', ['us-gaap:EarningsPerShareBasic'], True, 'qf'),
-    PeriodIndicatorBuilder('sga_expense_qf', ['us-gaap:SellingGeneralAndAdministrativeExpense'], True, 'qf')
+    PeriodIndicatorBuilder('income', ['us-gaap:NetIncomeLoss'], True, 'ltm'),
+    PeriodIndicatorBuilder('interest_expense', ['us-gaap:InterestExpense'], True, 'ltm'),
+    PeriodIndicatorBuilder('operating_expense', ['us-gaap:OperatingExpenses'], True, 'ltm'),
+    PeriodIndicatorBuilder('operating_income', ['us-gaap:OperatingIncomeLoss'], True, 'ltm'),
+    PeriodIndicatorBuilder('rd_expense', ['us-gaap:ResearchAndDevelopmentExpense'], True, 'ltm'),
+    PeriodIndicatorBuilder('retained_earnings', ['us-gaap:PostconfirmationRetainedEarningsDeficit'], True, 'ltm'),
+    PeriodIndicatorBuilder('sales_ps', ['us-gaap:EarningsPerShareBasic'], True, 'ltm'),
+    PeriodIndicatorBuilder('sga_expense', ['us-gaap:SellingGeneralAndAdministrativeExpense'], True, 'ltm'),
 ]
+for s in standard_indicator_builders + []:
+    if type(s) == PeriodIndicatorBuilder:
+        standard_indicator_builders.append(PeriodIndicatorBuilder(s.alias + '_ltm', s.facts, s.use_report_date, 'ltm'))
+        standard_indicator_builders.append(PeriodIndicatorBuilder(s.alias + '_af', s.facts, s.use_report_date, 'af'))
+        standard_indicator_builders.append(PeriodIndicatorBuilder(s.alias + '_qf', s.facts, s.use_report_date, 'qf'))
+
 
 if __name__ == '__main__':
     import qnt.data.stocks as qds
