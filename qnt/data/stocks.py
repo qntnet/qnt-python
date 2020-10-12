@@ -4,9 +4,9 @@ from qnt.data.common import *
 
 
 def load_assets(
-        min_date: tp.Union[str, datetime.date] = '2007-01-01',
+        min_date: tp.Union[str, datetime.date, None] = None,
         max_date: tp.Union[str, datetime.date, None] = None,
-        tail: tp.Union[datetime.timedelta, None] = None
+        tail: tp.Union[datetime.timedelta, float, int] = 4 * 365
 ):
     """
     :return: list of dicts with info for all tickers
@@ -19,20 +19,20 @@ def load_assets(
         else:
             max_date = MAX_DATE_LIMIT
 
-    if tail is None:
+    if min_date is not None:
         min_date = parse_date(min_date)
     else:
-        min_date = max_date - tail
+        min_date = max_date - parse_tail(tail)
 
     if min_date > max_date:
         raise Exception("min_date must be less than or equal to max_date")
-
-    # print(str(max_date))
 
     uri = "assets?min_date=" + str(min_date) + "&max_date=" + str(max_date)
     js = request_with_retry(uri, None)
     js = js.decode()
     tickers = json.loads(js)
+    if tickers is None:
+        return []
 
     tickers.sort(key=lambda a: str(a.get('last_point', '0000-00-00')) + "_" + a['id'], reverse=True)
     setup_ids()
@@ -46,11 +46,11 @@ def load_assets(
 
 def load_data(
         assets: tp.List[tp.Union[dict,str]] = None,
-        min_date: tp.Union[str, datetime.date] = '2007-01-01',
+        min_date: tp.Union[str, datetime.date, None] = None,
         max_date: tp.Union[str, datetime.date, None] = None,
         dims: tp.Tuple[str, str, str] = (ds.FIELD, ds.TIME, ds.ASSET),
-        forward_order: bool = False,
-        tail: tp.Union[datetime.timedelta, None] = None
+        forward_order: bool = True,
+        tail: tp.Union[datetime.timedelta, float, int] = DEFAULT_TAIL
 ) -> xr.DataArray:
     """
     :param assets: list of ticker names to load
@@ -61,21 +61,14 @@ def load_data(
     :param tail: datetime.timedelta, tail size of data. min_date = max_date - tail
     :return: xarray DataArray with historical data for selected assets
     """
-    if assets is None:
-        assets_array = load_assets(min_date=min_date, max_date=max_date, tail=tail)
-        assets = [a['id'] for a in assets_array]
-
-    assets = [a['id'] if type(a) == dict else a for a in assets]
-
     t = time.time()
     data = load_origin_data(assets=assets, min_date=min_date, max_date=max_date, tail=tail)
     print("Data loaded " + str(round(time.time() - t)) + "s")
-    if data is None:
-        return None
     data = adjust_by_splits(data, False)
     data = data.transpose(*dims)
     if forward_order:
         data = data.sel(**{ds.TIME: slice(None, None, -1)})
+    data.name = "stocks"
     return data
 
 
@@ -120,9 +113,20 @@ def restore_origin_data(data, make_copy=True):
 BATCH_LIMIT = 300000
 
 
-def load_origin_data(assets, min_date, max_date=None, tail: tp.Union[datetime.timedelta, None] = None):
+def load_origin_data(assets=None, min_date=None, max_date=None,
+                     tail: tp.Union[datetime.timedelta, float, int] = 4 * 365):
     setup_ids()
-    assets = [idt.translate_user_id_to_server_id(id) for id in assets]
+
+    if assets is not None:
+        assets = [a['id'] if type(a) == dict else a for a in assets]
+
+    if assets is None:
+        assets_array = load_assets(min_date=min_date, max_date=max_date, tail=tail)
+        assets_arg = [a['id'] for a in assets_array]
+    else:
+        assets_arg = assets
+    assets_arg = [idt.translate_user_id_to_server_id(id) for id in assets_arg]
+
     # load data from server
     if max_date is None and "LAST_DATA_PATH" in os.environ:
         whole_data_file_flag_name = get_env("LAST_DATA_PATH", "last_data.txt")
@@ -137,10 +141,10 @@ def load_origin_data(assets, min_date, max_date=None, tail: tp.Union[datetime.ti
         else:
             max_date = MAX_DATE_LIMIT
 
-    if tail is None:
+    if min_date is not None:
         min_date = parse_date(min_date)
     else:
-        min_date = max_date - tail
+        min_date = max_date - parse_tail(tail)
 
     # print(str(max_date))
 
@@ -154,19 +158,29 @@ def load_origin_data(assets, min_date, max_date=None, tail: tp.Union[datetime.ti
 
     chunks = []
 
-    for offset in range(0, len(assets), chunk_asset_count):
-        chunk_assets = assets[offset:(offset + chunk_asset_count)]
+    for offset in range(0, len(assets_arg), chunk_asset_count):
+        chunk_assets = assets_arg[offset:(offset + chunk_asset_count)]
         chunk = load_origin_data_chunk(chunk_assets, min_date.isoformat(), max_date.isoformat())
         if chunk is not None:
             chunks.append(chunk)
         print(
             "fetched chunk "
             + str(round(offset / chunk_asset_count + 1)) + "/"
-            + str(math.ceil(len(assets) / chunk_asset_count)) + " "
+            + str(math.ceil(len(assets_arg) / chunk_asset_count)) + " "
             + str(round(time.time() - start_time)) + "s"
         )
+
     if len(chunks) == 0:
-        return None
+        fields = [f.OPEN, f.LOW, f.HIGH, f.CLOSE, f.VOL, f.DIVS, f.SPLIT, f.SPLIT_CUMPROD]
+        return xr.DataArray(
+            [[[np.nan] * len(assets_arg)]]*len(fields),
+            dims=[ds.FIELD, ds.TIME, ds.ASSET],
+            coords={
+                ds.FIELD: fields,
+                ds.TIME: max_date,
+                ds.ASSET: assets_arg
+            }
+        )
 
     whole = xr.concat(chunks, ds.ASSET)
     whole = whole.transpose(ds.FIELD, ds.TIME, ds.ASSET)
@@ -177,6 +191,10 @@ def load_origin_data(assets, min_date, max_date=None, tail: tp.Union[datetime.ti
         np.sort(whole.coords[ds.ASSET])
     ]
 
+    if assets is not None:
+        assets = sorted(assets)
+        assets = xr.DataArray(assets, dims=[ds.ASSET], coords={ds.ASSET:assets})
+        whole = whole.broadcast_like(assets)
     return whole
 
 
@@ -206,6 +224,7 @@ def setup_ids():
         tickers = json.loads(js)
         idt.USE_ID_TRANSLATION = next((i for i in tickers if i.get('FIGI') is not None), None) is not None
         FIRST = False
+
 
 if __name__ == '__main__':
     # import qnt.id_translation

@@ -5,12 +5,17 @@ import pandas as pd
 import datetime as dt
 
 
-def secgov_load_indicators(assets, time_coord, standard_indicators=None, builders = None,
-                           start_date_offset = datetime.timedelta(days=365*2),
-                           fill_strategy=lambda xarr: xarr.ffill('time')):
+def secgov_load_indicators(
+        assets,
+        time_coord,
+        standard_indicators=None,
+        builders = None,
+        start_date_offset = datetime.timedelta(days=365*2),
+        fill_strategy=lambda xarr: xarr.ffill('time')
+):
 
     cik2id = dict((a['cik'], a['id']) for a in assets if a.get('cik') is not None)
-    min_date = pd.Timestamp(time_coord.min().values).to_pydatetime().date() - start_date_offset
+    min_date = pd.Timestamp(time_coord.min().values).to_pydatetime().date() - parse_tail(start_date_offset)
     max_date = pd.Timestamp(time_coord.max().values).to_pydatetime().date()
     indicator_dicts = secgov_load_indicator_dicts(list(cik2id.keys()),  standard_indicators, builders, min_date, max_date)
 
@@ -36,10 +41,11 @@ def secgov_load_indicators(assets, time_coord, standard_indicators=None, builder
     idc_arr = fill_strategy(idc_arr)
     idc_arr = idc_arr.sel(time=time_coord)
 
+    idc_arr.name = "secgov_indicators"
     return idc_arr
 
 
-def secgov_load_indicator_dicts(ciks, standard_indicators=None, builders=None, min_date='2007-01-01', max_date=None,  tail=None):
+def secgov_load_indicator_dicts(ciks, standard_indicators=None, builders=None, min_date=None, max_date=None, tail=DEFAULT_TAIL):
     if builders is None:
         builders = []
     else:

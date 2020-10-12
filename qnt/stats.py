@@ -1,12 +1,12 @@
 from .data import f, ds, load_assets, sort_and_crop_output, get_env
 import xarray as xr
 import numpy as np
-import bottleneck
 import pandas as pd
 import gzip, base64, json
-from urllib import parse, request
+from urllib import request
 from tabulate import tabulate
 import numba
+import sys, os
 
 EPS = 10 ** -7
 
@@ -193,7 +193,7 @@ def calc_relative_return_np(WEIGHT, UNLOCKED, OPEN, CLOSE, SLIPPAGE, DIVS, ROLL,
     return RR
 
 
-def arrange_data(data, target_weights, additional_series=None, per_asset=False):
+def arrange_data(data, target_weights, additional_series=None, per_asset=False, fix_liquid=True):
     """
     arranges data for proper calculations
     :param per_asset:
@@ -237,8 +237,6 @@ def arrange_data(data, target_weights, additional_series=None, per_asset=False):
 
     adjusted_tw.loc[time_intersected, assets] = weights_intersection
     adjusted_tw = adjusted_tw.where(np.isfinite(adjusted_tw), 0)
-    if f.IS_LIQUID in adjusted_data.coords[ds.FIELD]:
-        adjusted_tw = adjusted_tw.where(adjusted_data.loc[f.IS_LIQUID] > 0, 0)
 
     if per_asset:
         adjusted_tw = xr.where(adjusted_tw > 1, 1, adjusted_tw)
@@ -446,7 +444,7 @@ def calc_avg_turnover(portfolio_history, equity, data, max_periods=None, min_per
     return turnover
 
 
-def calc_avg_holding_time(portfolio_history,  # equity, data,
+def calc_avg_holding_time(portfolio_history,
                           max_periods=None, min_periods=1, per_asset=False, points_per_year=None):
     '''
     Calculates holding time.
@@ -542,7 +540,7 @@ def calc_holding_log_np_nb(weights: np.ndarray) -> np.ndarray:  # , equity: np.n
 
 def calc_non_liquid(data, portfolio_history):
     (adj_data, adj_ph, ignored) = arrange_data(data, portfolio_history, None)
-    if f.IS_LIQUID in list(adj_data.coords[ds.FIELD]):
+    if f.IS_LIQUID in adj_data.coords[ds.FIELD]:
         non_liquid = adj_ph.where(
             np.logical_and(np.isfinite(adj_data.loc[f.IS_LIQUID]), adj_data.loc[f.IS_LIQUID] == 0))
         non_liquid = non_liquid.dropna(ds.ASSET, 'all')
@@ -557,10 +555,15 @@ def find_missed_dates(output, data):
 
     min_out_ts = min(out_ts)
 
-    data_ts = data.coords[ds.TIME]
-    data_ts = data_ts.where(data_ts >= min_out_ts).dropna(ds.TIME)
+    data_ts = data.where(data.time >= min_out_ts)
+    if f.IS_LIQUID in data.coords[ds.FIELD]:
+        data_ts = data_ts.where(data.sel({ds.FIELD:f.IS_LIQUID}) > 0)
+    else:
+        data_ts = data_ts.where(data.sel({ds.FIELD:f.CLOSE}) > 0)
+    data_ts = data_ts.dropna(ds.TIME, 'all').coords[ds.TIME]
     data_ts = np.sort(data_ts.values)
-    return np.array(np.setdiff1d(data_ts, out_ts))
+    missed = np.setdiff1d(data_ts, out_ts)
+    return missed
 
 
 def calc_avg_points_per_year(data: xr.DataArray):
@@ -626,15 +629,15 @@ def calc_stat(data, portfolio_history, slippage_factor=0.05, roll_slippage_facto
     if max_periods is None:
         max_periods = (points_per_year * 3) if points_per_year == 252 else (points_per_year * 7)
 
+    missed_dates = find_missed_dates(portfolio_history, data)
+    if len(missed_dates) > 0:
+        print("WARNING: some dates are missed in the portfolio_history", file=sys.stderr)
+
     portfolio_history = sort_and_crop_output(portfolio_history, per_asset)
     if f.IS_LIQUID in data.coords[ds.FIELD]:
         non_liquid = calc_non_liquid(data, portfolio_history)
         if non_liquid is not None:
-            print("WARNING: Strategy trades non-liquid assets.")
-
-    missed_dates = find_missed_dates(portfolio_history, data)
-    if len(missed_dates) > 0:
-        print("WARNING: some dates are missed in the portfolio_history")
+            print("WARNING: Strategy trades non-liquid assets.", file=sys.stderr)
 
     RR = calc_relative_return(data, portfolio_history, slippage_factor, roll_slippage_factor, per_asset, points_per_year)
 
@@ -737,12 +740,20 @@ def calc_sector_distribution(portfolio_history, timeseries=None):
     return sector_distr
 
 
-def print_correlation(portfolio_history, data):
+def check_correlation(portfolio_history, data, print_stack_trace=True):
     """ Checks correlation for current output. """
     portfolio_history = sort_and_crop_output(portfolio_history)
     rr = calc_relative_return(data, portfolio_history)
 
-    cr_list = calc_correlation(rr)
+    try:
+        cr_list = calc_correlation(rr, False)
+    except:
+        import logging
+        if print_stack_trace:
+            logging.exception("Correlation check failed.")
+        else:
+            print("Correlation check failed.", file=sys.stderr)
+        return
 
     print()
 
@@ -750,7 +761,7 @@ def print_correlation(portfolio_history, data):
         print("Ok. This strategy does not correlate with other strategies.")
         return
 
-    print("WARNING! This strategy correlates with other strategies.")
+    print("WARNING! This strategy correlates with other strategies.", file=sys.stderr)
     print("The number of systems with a larger Sharpe ratio and correlation larger than 0.8:", len(cr_list))
     print("The max correlation value (with systems with a larger Sharpe ratio):", max([i['cofactor'] for i in cr_list]))
     my_cr = [i for i in cr_list if i['my']]
@@ -771,8 +782,14 @@ def print_correlation(portfolio_history, data):
         print(tabulate(rows, headers))
 
 
-def calc_correlation(relative_returns):
+print_correlation = check_correlation
+
+
+def calc_correlation(relative_returns, suppress_exception=True):
     try:
+        if "SUBMISSION_ID" in os.environ and os.environ["SUBMISSION_ID"] != "":
+            print("correlation check disabled")
+            return []
 
         ENGINE_CORRELATION_URL = get_env("ENGINE_CORRELATION_URL",
                                          "http://localhost:8080/referee/submission/forCorrelation")
@@ -805,10 +822,14 @@ def calc_correlation(relative_returns):
             result.append(sub)
 
         return result
-    except:
-        import logging
-        logging.exception("network error")
-        return []
+    except Exception as e:
+        print("WARNING! Can't calculate correlation.", file=sys.stderr)
+        if suppress_exception:
+            import logging
+            logging.exception("network error")
+            return []
+        else:
+            raise e
 
 
 def check_exposure(portfolio_history,
@@ -856,7 +877,7 @@ def check_exposure(portfolio_history,
         print("Ok. The exposure check succeed.")
         return True
     else:
-        print("WARNING! The exposure check failed.")
+        print("WARNING! The exposure check failed.", file=sys.stderr)
         print("Hard limit check: ", hard_limit_ok)
         print("Days check: ", days_ok)
         print("Excess check:", excess_ok)

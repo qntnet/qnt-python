@@ -93,6 +93,8 @@ def test_strategy(data, strategy=None, **kwargs):
             **{ds.TIME: slice(point_count - 1 - step, None)})
         # normalize portfolio to the start of day
         next_portfolio = strategy.step(piece)
+        if ds.TIME in next_portfolio.dims:
+            next_portfolio = next_portfolio.sel({ds.TIME: next_portfolio.coords[ds.TIME].max().values})
         next_portfolio.loc[np.logical_not(np.isfinite(next_portfolio))] = 0
 
         sum = abs(next_portfolio).sum()

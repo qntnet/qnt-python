@@ -15,6 +15,7 @@ def load_data_calc_output_and_check_forward_looking(strategy):
     :return: whole output
     """
     qdc.MAX_DATE_LIMIT = None
+    qdc.MAX_DATETIME_LIMIT = None
 
     print("Computing of the whole output...")
     whole_output = strategy()
@@ -22,11 +23,13 @@ def load_data_calc_output_and_check_forward_looking(strategy):
     last_date = datetime.datetime.now().date()
     last_date = last_date - datetime.timedelta(days=FORWARD_LOOKING_TEST_OFFSET)
     qdc.MAX_DATE_LIMIT = last_date
+    qdc.MAX_DATETIME_LIMIT = datetime.datetime.combine(last_date, datetime.time.min)
 
     print("Computing of the cropped output...")
     cropped_output = strategy()
 
     qdc.MAX_DATE_LIMIT = None
+    qdc.MAX_DATETIME_LIMIT = None
 
     check_forward_looking(cropped_output, whole_output)
 

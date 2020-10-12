@@ -10,11 +10,11 @@ def load_major_index_list():
 
 
 def load_major_index_data(
-        min_date: tp.Union[str, datetime.date] = '2007-01-01',
+        min_date: tp.Union[str, datetime.date, None] = None,
         max_date: tp.Union[str, datetime.date, None] = None,
-        tail: tp.Union[datetime.timedelta, None] = None,
+        tail: tp.Union[datetime.timedelta, float, int] = DEFAULT_TAIL,
         dims: tp.Tuple[str, str, str] = (ds.FIELD, ds.TIME, ds.ASSET),
-        forward_order: bool = False,
+        forward_order: bool = True,
 ):
     max_date = parse_date(max_date)
 
@@ -24,10 +24,10 @@ def load_major_index_data(
         else:
             max_date = MAX_DATE_LIMIT
 
-    if tail is None:
+    if min_date is not None:
         min_date = parse_date(min_date)
     else:
-        min_date = max_date - tail
+        min_date = max_date - parse_tail(tail)
 
     uri = "major-idx/data?min_date=" + str(min_date) + "&max_date=" + str(max_date)
     raw = request_with_retry(uri, None)
@@ -37,13 +37,14 @@ def load_major_index_data(
 
     if forward_order:
         arr = arr.sel(**{ds.TIME: slice(None, None, -1)})
+    arr.name = "major_indexes"
     return arr.transpose(*dims)
 
 
 def load_index_list(
-        min_date: tp.Union[str, datetime.date] = '2007-01-01',
+        min_date: tp.Union[str, datetime.date, None] = None,
         max_date: tp.Union[str, datetime.date, None] = None,
-        tail: tp.Union[datetime.timedelta, None] = None
+        tail: tp.Union[datetime.timedelta, int, float] = DEFAULT_TAIL
 ) -> list:
     """
     :return: list of dicts with info for all indexes
@@ -56,10 +57,10 @@ def load_index_list(
         else:
             max_date = MAX_DATE_LIMIT
 
-    if tail is None:
+    if min_date is not None:
         min_date = parse_date(min_date)
     else:
-        min_date = max_date - tail
+        min_date = max_date - parse_tail(tail)
 
     if min_date > max_date:
         raise Exception("min_date must be less than or equal to max_date")
@@ -77,12 +78,12 @@ def load_index_list(
 
 
 def load_index_data(
-        assets: tp.Union[None, tp.List[str]] = None,
-        min_date: tp.Union[str, datetime.date] = '2007-01-01',
+        assets: tp.Union[None, tp.List[tp.Union[str,dict]]] = None,
+        min_date: tp.Union[str, datetime.date, None] = None,
         max_date: tp.Union[str, datetime.date, None] = None,
         dims: tp.Tuple[str, str] = (ds.TIME, ds.ASSET),
-        forward_order: bool = False,
-        tail: tp.Union[datetime.timedelta, None] = None
+        forward_order: bool = True,
+        tail: tp.Union[datetime.timedelta, int, float] = DEFAULT_TAIL,
 ) -> tp.Union[None, xr.DataArray]:
     max_date = parse_date(max_date)
 
@@ -92,15 +93,21 @@ def load_index_data(
         else:
             max_date = MAX_DATE_LIMIT
 
-    if tail is None:
+    if min_date is not None:
         min_date = parse_date(min_date)
     else:
-        min_date = max_date - tail
+        min_date = max_date - parse_tail(tail)
+
+    if assets is not None:
+        assets = [a['id'] if type(a) == dict else a for a in assets]
 
     if assets is None:
-        assets = load_index_list(min_date, max_date)
-        assets = [i['id'] for i in assets]
-    params = {"ids": assets, "min_date": min_date.isoformat(), "max_date": max_date.isoformat()}
+        assets_array = load_index_list(min_date, max_date)
+        assets_arg = [i['id'] for i in assets_array]
+    else:
+        assets_arg = assets
+
+    params = {"ids": assets_arg, "min_date": min_date.isoformat(), "max_date": max_date.isoformat()}
     params = json.dumps(params)
     params = params.encode()
     raw = request_with_retry("idx/data", params)
@@ -113,4 +120,11 @@ def load_index_data(
 
     if forward_order:
         arr = arr.sel(**{ds.TIME: slice(None, None, -1)})
+
+    if assets is not None:
+        assets = sorted(assets)
+        assets = xr.DataArray(assets, dims=[ds.ASSET], coords={ds.ASSET:assets})
+        arr = arr.broadcast_like(assets)
+
+    arr.name = "indexes"
     return arr.transpose(*dims)

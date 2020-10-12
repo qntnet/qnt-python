@@ -10,9 +10,14 @@ import json
 import math
 import xarray as xr
 import numpy as np
+import pandas as pd
+import re
 
 
 MAX_DATE_LIMIT: tp.Union[datetime.date, None] = None
+MAX_DATETIME_LIMIT: tp.Union[datetime.datetime, None] = None
+
+DEFAULT_TAIL = 4 * 365
 
 
 class Fields:
@@ -76,6 +81,8 @@ def parse_date(dt: tp.Union[None, str, datetime.datetime, datetime.date]) -> dat
             return parse_date_and_hour(dt).date()
         except:
             return datetime.date.today()
+    if isinstance(dt, np.datetime64):
+        return pd.Timestamp(dt).date()
     if isinstance(dt, str):
         return datetime.datetime.strptime(dt + "Z+00:00", "%Y-%m-%dZ%z").date()
     if isinstance(dt, datetime.datetime):
@@ -83,8 +90,11 @@ def parse_date(dt: tp.Union[None, str, datetime.datetime, datetime.date]) -> dat
         return dt.date()
     if isinstance(dt, datetime.date):
         return dt
-    raise Exception("invalid date")
+    raise Exception("invalid date " + str(type(dt)))
 
+
+def parse_tail(tail: tp.Union[datetime.timedelta, int]):
+    return tail if type(tail) == datetime.timedelta else datetime.timedelta(days=tail)
 
 
 def parse_date_and_hour(dt: tp.Union[None, str, datetime.datetime, datetime.date]) -> datetime.datetime:
@@ -94,6 +104,8 @@ def parse_date_and_hour(dt: tp.Union[None, str, datetime.datetime, datetime.date
             return parse_date_and_hour(dt)
         except:
             return datetime.datetime.now(tz=datetime.timezone.utc)
+    if isinstance(dt, np.datetime64):
+        return pd.Timestamp(dt)
     if isinstance(dt, datetime.date):
         return datetime.datetime(dt.year, dt.month, dt.day, tzinfo=datetime.timezone.utc)
     if isinstance(dt, datetime.datetime):
@@ -105,7 +117,7 @@ def parse_date_and_hour(dt: tp.Union[None, str, datetime.datetime, datetime.date
             return datetime.datetime.strptime(dt + "Z+00:00", "%Y-%m-%dT%HZ%z")
         else:
             return datetime.datetime.strptime(dt + "Z+00:00", "%Y-%m-%dZ%z")
-    raise Exception("invalid date")
+    raise Exception("invalid date " + str(type(dt)))
 
 
 def datetime_to_hours_str(dt: datetime.datetime) -> str:
@@ -154,3 +166,24 @@ def exclude_weights_xarray_dataarray_from_nonliquids(weights_xarray_dataarray, a
     return liquid_weights_xarray_dataarray
 
 
+def parse_max_datetime_from_url(url):
+    r = re.compile("^.+/(\\d{4}-\\d{2}-\\d{2})/{0,1}$")
+    m = r.match(url)
+    if m is not None:
+        return parse_date_and_hour(m.group(1))
+    r = re.compile("^.+/(\\d{4}-\\d{2}-\\d{2})T\\d{2}/{0,1}$")
+    m = r.match(url)
+    if m is not None:
+        return parse_date_and_hour(m.group(1))
+    return None
+
+
+if MAX_DATE_LIMIT is None:
+    MAX_DATETIME_LIMIT = parse_max_datetime_from_url(BASE_URL)
+    MAX_DATE_LIMIT = None if MAX_DATETIME_LIMIT is None else MAX_DATETIME_LIMIT.date()
+
+if __name__ == '__main__':
+    print(parse_max_datetime_from_url('http://hl.datarelay:7070/last/2020-10-07T10/'))
+    print(parse_max_datetime_from_url('http://hl.datarelay:7070/last/2016-10-28/'))
+    #t = parse_max_datetime_from_url('http://hl.datarelay:7070/last/2020-10-07T10/')
+    #print(datetime.datetime.combine(t.date(), datetime.time.min))

@@ -7,9 +7,9 @@ def load_secgov_forms(
         types: tp.Union[None, tp.List[str]] = None,
         facts: tp.Union[None, tp.List[str]] = None,
         skip_segment: bool = False,
-        min_date: tp.Union[str, datetime.date] = '2007-01-01',
+        min_date: tp.Union[str, datetime.date] = None,
         max_date: tp.Union[str, datetime.date, None] = None,
-        tail: tp.Union[datetime.timedelta, None] = None
+        tail: tp.Union[datetime.timedelta, float, int] = None
 ) -> tp.Generator[dict, None, None]:
     """
     Load SEC Forms (Fundamental data)
@@ -29,7 +29,7 @@ def load_secgov_forms(
         else:
             max_date = MAX_DATE_LIMIT
 
-    if tail is None:
+    if min_date is not None:
         min_date = parse_date(min_date)
     else:
         min_date = max_date - tail
@@ -61,9 +61,9 @@ def load_secgov_facts(
         skip_segment: bool = False,
         period: tp.Union[str, None] = None, # 'A', 'S', 'Q'
         columns: tp.Union[tp.List[str], None] = None,
-        min_date: tp.Union[str, datetime.date] = '2007-01-01',
+        min_date: tp.Union[str, datetime.date, None] = None,
         max_date: tp.Union[str, datetime.date, None] = None,
-        tail: tp.Union[datetime.timedelta, None] = None,
+        tail: tp.Union[datetime.timedelta, float, int] = DEFAULT_TAIL,
         group_by_cik: bool = False
 ) -> tp.Generator[dict, None, None]:
     """
@@ -86,10 +86,10 @@ def load_secgov_facts(
         else:
             max_date = MAX_DATE_LIMIT
 
-    if tail is None:
+    if min_date is not None:
         min_date = parse_date(min_date)
     else:
-        min_date = max_date - tail
+        min_date = max_date - parse_tail(tail)
 
     params = {
         'ciks': ciks,
@@ -129,4 +129,4 @@ def load_secgov_facts(
     print("facts loaded.")
 
 
-SECGOV_BATCH_SIZE=2000
+SECGOV_BATCH_SIZE = 2000

@@ -3,6 +3,8 @@ import numba as nb
 import pandas as pd
 import qnt.ta.ndadapter as nda
 import typing as tp
+import time
+import sys
 
 
 @nb.jit(nb.float64[:](nb.float64[:], nb.int64), nopython=True)
@@ -62,12 +64,18 @@ def vwma_np_1d(price: np.ndarray, volume: np.ndarray, periods:int) -> np.ndarray
     return result
 
 
+last_alert = 0
+
+
 def wma(series: nda.NdType, weights: tp.Union[tp.List[float], np.ndarray] = None) -> nda.NdType:
     """
     :param weights: weights in decreasing order. lwma(series, 3) == wma(series, [3,2,1])
     """
-    if weights is None or type(weights) is int:
-        print("Warning! wma(series:ndarray, periods:int) is deprecated. Use lwma instead of wma.")
+    global last_alert
+    if (weights is None or type(weights) is int):
+        if time.time() - last_alert > 60:
+            last_alert = time.time()
+            print("Warning! wma(series:ndarray, periods:int) deprecated. Use lwma instead of wma.", file=sys.stderr)
         return lwma(series,weights)
     if type(weights) is list:
         weights = np.array(weights, np.float64)

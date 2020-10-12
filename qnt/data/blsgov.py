@@ -43,9 +43,9 @@ def load_blsgov_series_list(db_id:str):
 
 def load_blsgov_series_data(
         series_id:str,
-        min_date: tp.Union[str, datetime.date] = '2007-01-01',
+        min_date: tp.Union[str, datetime.date, None] = None,
         max_date: tp.Union[str, datetime.date, None] = None,
-        tail: tp.Union[datetime.timedelta, None] = None
+        tail: tp.Union[datetime.timedelta, int, float] = DEFAULT_TAIL
 ):
     max_date = parse_date(max_date)
     if MAX_DATE_LIMIT is not None:
@@ -54,10 +54,10 @@ def load_blsgov_series_data(
         else:
             max_date = MAX_DATE_LIMIT
 
-    if tail is None:
+    if min_date is not None:
         min_date = parse_date(min_date)
     else:
-        min_date = max_date - tail
+        min_date = max_date - parse_tail(tail)
     uri = "bls.gov/series/data?id=" + series_id + "&min_date=" + min_date.isoformat() + "&max_date=" + max_date.isoformat()
     js = request_with_retry(uri, None)
     js = js.decode()
@@ -66,9 +66,9 @@ def load_blsgov_series_data(
 
 def load_blsgov_series_aspect(
         series_id:str,
-        min_date: tp.Union[str, datetime.date] = '2007-01-01',
+        min_date: tp.Union[str, datetime.date, None] = None,
         max_date: tp.Union[str, datetime.date, None] = None,
-        tail: tp.Union[datetime.timedelta, None] = None
+        tail: tp.Union[datetime.timedelta, int, float] = DEFAULT_TAIL
 ):
     max_date = parse_date(max_date)
     if MAX_DATE_LIMIT is not None:
@@ -77,10 +77,10 @@ def load_blsgov_series_aspect(
         else:
             max_date = MAX_DATE_LIMIT
 
-    if tail is None:
+    if min_date is not None:
         min_date = parse_date(min_date)
     else:
-        min_date = max_date - tail
+        min_date = max_date - parse_tail(tail)
     uri = "bls.gov/series/aspect?id=" + series_id + "&min_date=" + min_date.isoformat() + "&max_date=" + max_date.isoformat()
     js = request_with_retry(uri, None)
     js = js.decode()
