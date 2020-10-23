@@ -9,6 +9,26 @@ from qnt.neutralization import neutralize
 import datetime as dt
 import qnt.exposure as qne
 
+# data = qndata.crypto_load_data(assets=['foo'], max_date='2020-01-01')
+# print(data)
+# exit(0)
+
+# data = qndata.index_load_data(assets=['foo'], max_date='2020-01-01')
+# print(data)
+# exit(0)
+
+# data = qndata.futures_load_data(assets=['foo'], max_date='2020-01-01')
+# print(data)
+# exit(0)
+
+# data = qndata.load_data( max_date='2020-11-01', tail=1)
+# print(data)
+# exit(0)
+
+# data = qndata.index_major_load_data()
+# print(data)
+# exit(0)
+
 assets = qndata.load_assets()
 
 data = qndata.load_data(
@@ -31,15 +51,15 @@ output = output.dropna('time', 'all')
 
 print("First check.")
 
-qndata.output.check_output(output, data)
+qndata.check_output(output, data)
 
 print("Fix output.")
 
-output = qndata.output.clean_output(output, data)
+output = qndata.clean_output(output, data)
 
 print("Second check.")
 
-qndata.output.check_output(output, data)
+qndata.check_output(output, data)
 
 print(output.to_pandas())
 print(output[0, 0].item())

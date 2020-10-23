@@ -13,11 +13,10 @@ import numpy as np
 import pandas as pd
 import re
 
-
 MAX_DATE_LIMIT: tp.Union[datetime.date, None] = None
 MAX_DATETIME_LIMIT: tp.Union[datetime.datetime, None] = None
 
-DEFAULT_TAIL = 4 * 365
+DEFAULT_TAIL = 6 * 365
 
 
 class Fields:
@@ -26,11 +25,12 @@ class Fields:
     HIGH = "high"
     CLOSE = "close"
     VOL = "vol"
-    DIVS = "divs"
-    SPLIT = "split"
-    SPLIT_CUMPROD = "split_cumprod"
-    IS_LIQUID = "is_liquid"
-    ROLL = "roll"
+    DIVS = "divs"  # only for stocks
+    SPLIT = "split"  # only for stocks
+    SPLIT_CUMPROD = "split_cumprod"  # only for stocks
+    IS_LIQUID = "is_liquid"  # only for stocks
+    OPEN_INTEREST = "oi"  # only for futures
+    ROLL = "roll"  # only for futures
 
 
 f = Fields
@@ -178,6 +178,25 @@ def parse_max_datetime_from_url(url):
     return None
 
 
+def deprecated_wrap(origin):
+    import sys, traceback
+    stack = traceback.extract_stack(limit=2)
+    deprecated_name = stack[-2][3].split("=")[0].strip()
+
+    try:
+        f = sys._getframe(1)
+        deprecated_name = f.f_locals['__name__'] + '.' + deprecated_name
+    except:
+        pass
+
+    def wrap(*args, **kwargs):
+        print('WARNING: ' + deprecated_name + ' deprecated, use ' + origin.__module__ + '.' + origin.__name__,
+              file=sys.stderr)
+        return origin(*args, **kwargs)
+
+    return wrap
+
+
 if MAX_DATE_LIMIT is None:
     MAX_DATETIME_LIMIT = parse_max_datetime_from_url(BASE_URL)
     MAX_DATE_LIMIT = None if MAX_DATETIME_LIMIT is None else MAX_DATETIME_LIMIT.date()
@@ -185,5 +204,5 @@ if MAX_DATE_LIMIT is None:
 if __name__ == '__main__':
     print(parse_max_datetime_from_url('http://hl.datarelay:7070/last/2020-10-07T10/'))
     print(parse_max_datetime_from_url('http://hl.datarelay:7070/last/2016-10-28/'))
-    #t = parse_max_datetime_from_url('http://hl.datarelay:7070/last/2020-10-07T10/')
-    #print(datetime.datetime.combine(t.date(), datetime.time.min))
+    # t = parse_max_datetime_from_url('http://hl.datarelay:7070/last/2020-10-07T10/')
+    # print(datetime.datetime.combine(t.date(), datetime.time.min))

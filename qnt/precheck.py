@@ -36,12 +36,13 @@ def run_init():
 
 
 def evaluate_passes(data_type='stocks', passes=3, dates=None):
-    if data_type != 'stocks':
+    if data_type == 'stocks' or data_type == 'futures':
+        in_sample_days = (5 * 366 + 183)
+    elif data_type == 'crypto':
+        in_sample_days = 7*366
+    else:
         print("Unsupported data_type", data_type, file=sys.stderr)
         return
-
-    if data_type == 'stocks':
-        in_sample_days = 4 * 365
 
     print("Output directory is:", result_dir)
     os.makedirs(result_dir, exist_ok=True)
@@ -55,8 +56,11 @@ def evaluate_passes(data_type='stocks', passes=3, dates=None):
 
     if dates is None:
         print("Prepare test dates...")
-        data = qnt.data.load_data(tail=datetime.timedelta(days=in_sample_days))
-        data = data.where(data.sel(field='is_liquid') > 0).dropna('time', 'all').time
+        print(in_sample_days)
+        data = qnt.data.load_data_by_type(data_type, tail=in_sample_days)
+        if 'is_liquid' in data.field:
+            data = data.where(data.sel(field='is_liquid') > 0).dropna('time', 'all')
+        data = data.time
         dates = [data.isel(time=-1).values, data.isel(time=1).values] \
                 + [data.isel(time=round(len(data) * (i+1)/(passes-1))).values for i in range(passes-2)]
         dates = list(set(dates))
@@ -88,11 +92,18 @@ def evaluate_passes(data_type='stocks', passes=3, dates=None):
         i += 1
         print("pass:", i, "/", len(dates), "max_date:", date.isoformat())
 
+        if data_type == 'stocks':
+            timeout = 30 * 60
+        if data_type == 'futures':
+            timeout = 10 * 60
+        if data_type == 'crypto':
+            timeout = 5 * 60
+
         data_url = urllib.parse.urljoin(urllib.parse.urljoin(qnt.data.common.BASE_URL, 'last/'), date.isoformat()) + "/"
         cmd = "DATA_BASE_URL=" + data_url + " \\\n" + \
               "LAST_DATA_PATH=" + last_data_fn + " \\\n" + \
               "OUTPUT_PATH=" + fractions_fn + " \\\n" + \
-              "jupyter nbconvert --to html --ExecutePreprocessor.timeout=1800 --execute strategy.ipynb --output=" + html_fn  # + \
+              "jupyter nbconvert --to html --ExecutePreprocessor.timeout=" + str(timeout)+ " --execute strategy.ipynb --output=" + html_fn  # + \
               # "\\\n 2>&1"
         print("cmd:", cmd)
         print("output:")
@@ -115,15 +126,18 @@ def evaluate_passes(data_type='stocks', passes=3, dates=None):
         if os.path.exists(fractions_fn):
             print("Check the output...")
             output = load_output(fractions_fn, date)
-            qnt.stats.check_exposure(output)
+
+            if data_type == 'stocks':
+                qnt.stats.check_exposure(output)
+
             print("Load data...")
-            data = qnt.data.load_data(
-                output.asset.values.tolist(),
-                min_date=str(output.time.min().values)[:10],
-                max_date=date
-            )
-            if qnt.stats.calc_non_liquid(data, output) is not None:
-                print("ERROR! The output contains illiquid positions.", file=sys.stderr)
+            data = qnt.data.load_data_by_type(data_type, assets=output.asset.values.tolist(),
+                                              min_date=str(output.time.min().values)[:10], max_date=date)
+
+            if data_type == 'stocks':
+                if qnt.stats.calc_non_liquid(data, output) is not None:
+                    print("ERROR! The output contains illiquid positions.", file=sys.stderr)
+
             missed = qnt.stats.find_missed_dates(output, data)
             if len(missed) > 0:
                 print("ERROR: some dates are missed in the output.", missed, file=sys.stderr)
@@ -195,13 +209,16 @@ def load_output(fn, date):
 
 
 def check_output(output, data_type='stocks'):
-    if data_type != 'stocks':
+    if data_type != 'stocks' and data_type != 'futures' and data_type != 'crypto':
         print("Unsupported data_type", data_type, file=sys.stderr)
         return
 
-    if data_type == 'stocks':
-        in_sample_days = 4 * 365
-        in_sample_points = 3 * 252
+    if data_type == 'stocks' or data_type == 'futures':
+        in_sample_days = 5 * 366 + 183
+        in_sample_points = 5 * 252
+    elif data_type == 'crypto':
+        in_sample_days = 7 * 366 + 183
+        in_sample_points = 60000
 
     min_date = np.datetime64(datetime.date.today() - datetime.timedelta(days=in_sample_days))
     output_tail = output.where(output.time > min_date).dropna('time', 'all')
@@ -214,8 +231,7 @@ def check_output(output, data_type='stocks'):
     print()
 
     print("Load data...")
-    data = qnt.data.load_data(output.asset.values, max_date=output.time.max().values,
-                              tail=datetime.timedelta(days=in_sample_days + 31))
+    data = qnt.data.load_data_by_type(data_type, assets=output.asset.values.tolist(), tail=in_sample_days + 31)
 
     print()
 
@@ -229,6 +245,5 @@ def check_output(output, data_type='stocks'):
 
     print()
 
-    qnt.stats.print_correlation(output, data)
-
+    qnt.stats.check_correlation(output, data)
 

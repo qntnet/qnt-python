@@ -1,11 +1,11 @@
 from qnt.data.common import *
-from qnt.data.secgov import load_secgov_facts
+from qnt.data.secgov import load_facts
 import itertools
 import pandas as pd
 import datetime as dt
 
 
-def secgov_load_indicators(
+def load_indicators(
         assets,
         time_coord,
         standard_indicators=None,
@@ -17,7 +17,7 @@ def secgov_load_indicators(
     cik2id = dict((a['cik'], a['id']) for a in assets if a.get('cik') is not None)
     min_date = pd.Timestamp(time_coord.min().values).to_pydatetime().date() - parse_tail(start_date_offset)
     max_date = pd.Timestamp(time_coord.max().values).to_pydatetime().date()
-    indicator_dicts = secgov_load_indicator_dicts(list(cik2id.keys()),  standard_indicators, builders, min_date, max_date)
+    indicator_dicts = load_indicator_dicts(list(cik2id.keys()),  standard_indicators, builders, min_date, max_date)
 
     dfs = []
 
@@ -31,10 +31,9 @@ def secgov_load_indicators(
         dfs.append(df)
 
     if len(dfs) is 0:
-        return None
+        return None # TODO
 
-    idc_arr = xr.concat(dfs, # [df.unstack().to_xarray().rename({'level_0':'field', 'level_1': 'time'}) for df in dfs],
-                        pd.Index([d.name for d in dfs], name='asset'))
+    idc_arr = xr.concat(dfs, pd.Index([d.name for d in dfs], name='asset'))
 
     idc_arr = xr.align(idc_arr, time_coord, join='outer')[0]
     idc_arr = idc_arr.sel(time = np.sort(idc_arr.time.values))
@@ -45,7 +44,10 @@ def secgov_load_indicators(
     return idc_arr
 
 
-def secgov_load_indicator_dicts(ciks, standard_indicators=None, builders=None, min_date=None, max_date=None, tail=DEFAULT_TAIL):
+secgov_load_indicators = deprecated_wrap(load_indicators)
+
+
+def load_indicator_dicts(ciks, standard_indicators=None, builders=None, min_date=None, max_date=None, tail=DEFAULT_TAIL):
     if builders is None:
         builders = []
     else:
@@ -63,13 +65,17 @@ def secgov_load_indicator_dicts(ciks, standard_indicators=None, builders=None, m
     fact_names = set(fact_names)
     fact_names = list(fact_names)
 
-    for g in load_secgov_facts(ciks, fact_names, min_date=min_date, max_date=max_date, skip_segment=True, tail=tail,
-                               columns=['cik', 'report_id', 'report_type', 'report_date', 'fact_name', 'period', 'period_length'], group_by_cik=True):
+    for g in load_facts(ciks, fact_names, min_date=min_date, max_date=max_date, skip_segment=True, tail=tail,
+                    columns=['cik', 'report_id', 'report_type', 'report_date', 'fact_name', 'period', 'period_length'],
+                    group_by_cik=True):
         indicators = dict()
         for b in builders:
             data = [d for d in g[1] if d['fact_name'] in b.facts]
             indicators[b.alias] = b.build_series_dict(data)
         yield (g[0], indicators)
+
+
+secgov_load_indicator_dicts = deprecated_wrap(load_indicator_dicts)
 
 
 class IndicatorBuilder:

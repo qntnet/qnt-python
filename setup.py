@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name="qnt",
-    version="0.0.166",
+    version="0.0.171",
     url="https://quantnet.ai",
     license='MIT',
     packages=['qnt', 'qnt.ta', 'qnt.data'],

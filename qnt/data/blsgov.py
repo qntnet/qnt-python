@@ -1,7 +1,7 @@
 from qnt.data.common import *
 
 
-def load_blsgov_db_list():
+def load_db_list():
     """
     :return: list of DBs from bls.gov
     """
@@ -11,7 +11,7 @@ def load_blsgov_db_list():
     return json.loads(js)
 
 
-def load_blsgov_db_meta(db_id:str):
+def load_db_meta(db_id:str):
     """
     :return: list of DBs from bls.gov
     """
@@ -24,7 +24,7 @@ def load_blsgov_db_meta(db_id:str):
     return json.loads(js)
 
 
-def load_blsgov_series_list(db_id:str):
+def load_series_list(db_id:str):
     """
     :return: generator of series
     """
@@ -41,7 +41,7 @@ def load_blsgov_series_list(db_id:str):
             yield s
 
 
-def load_blsgov_series_data(
+def load_series_data(
         series_id:str,
         min_date: tp.Union[str, datetime.date, None] = None,
         max_date: tp.Union[str, datetime.date, None] = None,
@@ -64,7 +64,7 @@ def load_blsgov_series_data(
     return json.loads(js)
 
 
-def load_blsgov_series_aspect(
+def load_series_aspect(
         series_id:str,
         min_date: tp.Union[str, datetime.date, None] = None,
         max_date: tp.Union[str, datetime.date, None] = None,

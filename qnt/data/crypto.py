@@ -1,8 +1,8 @@
 from qnt.data.common import *
 
-def load_cryptocurrency_data(
+def load_data(
         assets: tp.Union[None, tp.List[str]] = None,
-        min_date: tp.Union[str, datetime.date, datetime.datetime] = '2012-01-01',
+        min_date: tp.Union[str, datetime.date, datetime.datetime] = None,
         max_date: tp.Union[str, datetime.date, datetime.datetime, None] = None,
         dims: tp.Tuple[str, str, str] = (ds.FIELD, ds.TIME, ds.ASSET),
         forward_order: bool = True,
@@ -29,16 +29,28 @@ def load_cryptocurrency_data(
     uri = "crypto?min_date=" + datetime_to_hours_str(min_date) + "&max_date=" + datetime_to_hours_str(max_date)
     raw = request_with_retry(uri, None)
     if raw is None or len(raw) < 1:
-        return None
-
-    arr = xr.open_dataarray(raw, cache=True, decode_times=True)
-    arr = arr.compute()
+        arr = xr.DataArray(
+            [[np.nan]],
+            dims=[ds.TIME, ds.ASSET],
+            coords={
+                ds.TIME: pd.DatetimeIndex([max_date]),
+                ds.ASSET: ['ignore']
+            }
+        )[1:,1:]
+    else:
+        arr = xr.open_dataarray(raw, cache=True, decode_times=True)
+        arr = arr.compute()
 
     if assets is not None:
-        arr = arr.sel(asset=assets)
+        assets = list(set(assets))
+        assets = sorted(assets)
+        assets = xr.DataArray(assets, dims=[ds.ASSET], coords={ds.ASSET:assets})
+        arr = arr.broadcast_like(assets).sel(asset=assets)
 
     if forward_order:
         arr = arr.sel(**{ds.TIME: slice(None, None, -1)})
+
+    arr = arr.dropna(ds.TIME, 'all')
 
     arr.name = "crypto"
     return arr.transpose(*dims)

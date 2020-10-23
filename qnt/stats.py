@@ -1,4 +1,5 @@
-from .data import f, ds, load_assets, sort_and_crop_output, get_env
+from .data import f, ds, stocks_load_list, get_env
+from .output import normalize as output_normalize
 import xarray as xr
 import numpy as np
 import pandas as pd
@@ -127,7 +128,7 @@ def calc_relative_return_np_per_asset(WEIGHT, UNLOCKED, OPEN, CLOSE, SLIPPAGE, D
 
         if ROLL is not None and t > 0:
             pN = np.where(np.sign(N[t]) == np.sign(N[t-1]), np.minimum(np.abs(N[t]), np.abs(N[t-1])), 0)
-            R = pN * (ROLL[t] + ROLL_SLIPPAGE[t])
+            R = np.sign(N[t]) * pN * ROLL[t] + pN * ROLL_SLIPPAGE[t]
             equity_after_buy[t] -= R
 
     E = equity_tonight
@@ -180,7 +181,7 @@ def calc_relative_return_np(WEIGHT, UNLOCKED, OPEN, CLOSE, SLIPPAGE, DIVS, ROLL,
 
         if ROLL is not None and t > 0:
             pN = np.where(np.sign(N[t]) == np.sign(N[t-1]), np.minimum(np.abs(N[t]), np.abs(N[t-1])), 0)
-            R = pN * (ROLL[t] + ROLL_SLIPPAGE[t])
+            R = np.sign(N[t]) * pN * ROLL[t] + pN * ROLL_SLIPPAGE[t]
             equity_after_buy[t] -= np.nansum(R)
 
         equity_tonight[t] = equity_after_buy[t] + np.nansum((CLOSE[t] - OPEN[t]) * N[t])
@@ -267,17 +268,15 @@ def calc_equity(relative_return):
     return (relative_return + 1).cumprod(ds.TIME)
 
 
-def calc_volatility(relative_return, max_periods=None, min_periods=2, points_per_year=None):
+def calc_volatility(relative_return, max_periods=None, min_periods=2):
     """
     :param relative_return: daily return
     :param max_periods: maximal number of days
     :param min_periods: minimal number of days
     :return: portfolio volatility
     """
-    if points_per_year is None:
-        points_per_year = calc_avg_points_per_year(relative_return)
     if max_periods is None:
-        max_periods = points_per_year
+        max_periods = default_periods(relative_return)
     max_periods = min(max_periods, len(relative_return.coords[ds.TIME]))
     min_periods = min(min_periods, max_periods)
     return relative_return.rolling({ds.TIME: max_periods}, min_periods=min_periods).std()
@@ -292,8 +291,8 @@ def calc_volatility_annualized(relative_return, max_periods=None, min_periods=2,
     if points_per_year is None:
         points_per_year = calc_avg_points_per_year(relative_return)
     if max_periods is None:
-        max_periods = points_per_year
-    return calc_volatility(relative_return, max_periods, min_periods, points_per_year=points_per_year) * pow(
+        max_periods = default_periods(relative_return)
+    return calc_volatility(relative_return, max_periods, min_periods) * pow(
         points_per_year, 1. / 2)
 
 
@@ -324,7 +323,7 @@ def calc_sharpe_ratio_annualized(relative_return, max_periods=None, min_periods=
     if points_per_year is None:
         points_per_year = calc_avg_points_per_year(relative_return)
     if max_periods is None:
-        max_periods = points_per_year
+        max_periods = default_periods(relative_return)
     m = calc_mean_return_annualized(relative_return, max_periods, min_periods, points_per_year=points_per_year)
     v = calc_volatility_annualized(relative_return, max_periods, min_periods, points_per_year=points_per_year)
     sr = m / v
@@ -341,7 +340,7 @@ def calc_mean_return(relative_return, max_periods=None, min_periods=1, points_pe
     if points_per_year is None:
         points_per_year = calc_avg_points_per_year(relative_return)
     if max_periods is None:
-        max_periods = points_per_year
+        max_periods = default_periods(relative_return)
     max_periods = min(max_periods, len(relative_return.coords[ds.TIME]))
     min_periods = min(min_periods, max_periods)
     return xr.ufuncs.exp(
@@ -358,7 +357,7 @@ def calc_mean_return_annualized(relative_return, max_periods=None, min_periods=1
     if points_per_year is None:
         points_per_year = calc_avg_points_per_year(relative_return)
     if max_periods is None:
-        max_periods = points_per_year
+        max_periods = (points_per_year * 5) if points_per_year == 252 else (points_per_year * 7)
     power = func_np_to_xr(np.power)
     return power(calc_mean_return(relative_return, max_periods, min_periods, points_per_year=points_per_year) + 1,
                  points_per_year) - 1
@@ -541,8 +540,7 @@ def calc_holding_log_np_nb(weights: np.ndarray) -> np.ndarray:  # , equity: np.n
 def calc_non_liquid(data, portfolio_history):
     (adj_data, adj_ph, ignored) = arrange_data(data, portfolio_history, None)
     if f.IS_LIQUID in adj_data.coords[ds.FIELD]:
-        non_liquid = adj_ph.where(
-            np.logical_and(np.isfinite(adj_data.loc[f.IS_LIQUID]), adj_data.loc[f.IS_LIQUID] == 0))
+        non_liquid = adj_ph.where(np.logical_or(np.isnan(adj_data.loc[f.IS_LIQUID]), adj_data.loc[f.IS_LIQUID] == 0))
         non_liquid = non_liquid.dropna(ds.ASSET, 'all')
         non_liquid = non_liquid.dropna(ds.TIME, 'all')
         if abs(non_liquid).sum() > 0:
@@ -627,13 +625,13 @@ def calc_stat(data, portfolio_history, slippage_factor=0.05, roll_slippage_facto
     if points_per_year is None:
         points_per_year = calc_avg_points_per_year(data)
     if max_periods is None:
-        max_periods = (points_per_year * 3) if points_per_year == 252 else (points_per_year * 7)
+        max_periods = (points_per_year * 5) if points_per_year == 252 else (points_per_year * 7)
 
     missed_dates = find_missed_dates(portfolio_history, data)
     if len(missed_dates) > 0:
         print("WARNING: some dates are missed in the portfolio_history", file=sys.stderr)
 
-    portfolio_history = sort_and_crop_output(portfolio_history, per_asset)
+    portfolio_history = output_normalize(portfolio_history, per_asset)
     if f.IS_LIQUID in data.coords[ds.FIELD]:
         non_liquid = calc_non_liquid(data, portfolio_history)
         if non_liquid is not None:
@@ -702,7 +700,7 @@ def calc_sector_distribution(portfolio_history, timeseries=None):
     max_date = str(portfolio_history.coords[ds.TIME].max().values)[0:10]
     min_date = str(portfolio_history.coords[ds.TIME].min().values)[0:10]
 
-    assets = load_assets(min_date=min_date, max_date=max_date)
+    assets = stocks_load_list(min_date=min_date, max_date=max_date)
     assets = dict((a['id'], a) for a in assets)
 
     sectors = []
@@ -742,7 +740,7 @@ def calc_sector_distribution(portfolio_history, timeseries=None):
 
 def check_correlation(portfolio_history, data, print_stack_trace=True):
     """ Checks correlation for current output. """
-    portfolio_history = sort_and_crop_output(portfolio_history)
+    portfolio_history = output_normalize(portfolio_history)
     rr = calc_relative_return(data, portfolio_history)
 
     try:
@@ -766,8 +764,8 @@ def check_correlation(portfolio_history, data, print_stack_trace=True):
     print("The max correlation value (with systems with a larger Sharpe ratio):", max([i['cofactor'] for i in cr_list]))
     my_cr = [i for i in cr_list if i['my']]
 
-    print("Current sharpe ratio(3y):",
-          calc_sharpe_ratio_annualized(rr, calc_avg_points_per_year(data) * 3)[-1].values.item())
+    print("Current sharpe ratio(5y):",
+          calc_sharpe_ratio_annualized(rr, calc_avg_points_per_year(data) * 5)[-1].values.item())
 
     print()
 
@@ -835,7 +833,7 @@ def calc_correlation(relative_returns, suppress_exception=True):
 def check_exposure(portfolio_history,
                    soft_limit=0.05, hard_limit=0.1,
                    days_tolerance=0.02, excess_tolerance=0.02,
-                   avg_period=252, check_period=252*3
+                   avg_period=252, check_period=252*5
                    ):
     """
     Checks exposure according to the submission filters.
@@ -878,9 +876,9 @@ def check_exposure(portfolio_history,
         return True
     else:
         print("WARNING! The exposure check failed.", file=sys.stderr)
-        print("Hard limit check: ", hard_limit_ok)
-        print("Days check: ", days_ok)
-        print("Excess check:", excess_ok)
+        print("Hard limit check: ", 'Ok.' if hard_limit_ok else 'Failed.')
+        print("Days check: ", 'Ok.' if days_ok else 'Failed.')
+        print("Excess check:", 'Ok.' if excess_ok else 'Failed.')
         return False
 
 
@@ -894,3 +892,7 @@ def calc_exposure(portfolio_history):
     sum = sum.where(sum > EPS, 1) # prevents div by zero
     return abs(portfolio_history) / sum
 
+
+def default_periods(data):
+    points_per_year = calc_avg_points_per_year(data)
+    return (points_per_year * 5) if points_per_year == 252 else 60000

@@ -2,7 +2,7 @@ from qnt.data.common import *
 import itertools
 
 
-def load_secgov_forms(
+def load_forms(
         ciks: tp.Union[None, tp.List[str]] = None,
         types: tp.Union[None, tp.List[str]] = None,
         facts: tp.Union[None, tp.List[str]] = None,
@@ -35,9 +35,9 @@ def load_secgov_forms(
         min_date = max_date - tail
 
     params = {
-        'ciks': ciks,
-        'types': types,
-        'facts': facts,
+        'ciks': list(set(ciks)) if ciks is not None else None,
+        'types':  list(set(types)) if types is not None else None,
+        'facts': list(set(facts)) if facts is not None else None,
         'skip_segment': skip_segment,
         'min_date': min_date.isoformat(),
         'max_date': max_date.isoformat()
@@ -54,7 +54,7 @@ def load_secgov_forms(
         params['offset'] = params.get('offset', 0) + len(forms)
 
 
-def load_secgov_facts(
+def load_facts(
         ciks: tp.List[str],
         facts: tp.List[str],
         types: tp.Union[None, tp.List[str]] = None,
@@ -92,11 +92,11 @@ def load_secgov_facts(
         min_date = max_date - parse_tail(tail)
 
     params = {
-        'ciks': ciks,
-        'types': types,
-        'facts': facts,
+        'ciks': list(set(ciks)),
+        'types': list(set(types)) if types is not None else None,
+        'facts': list(set(facts)),
         'skip_segment': skip_segment,
-        'columns': columns,
+        'columns': list(set(columns)) if columns is not None else None,
         'period': period,
         'min_date': min_date.isoformat(),
         'max_date': max_date.isoformat()

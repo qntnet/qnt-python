@@ -1,7 +1,11 @@
 from qnt.data.common import *
 
 
-def load_major_index_list():
+def major_load_list():
+    """
+    Loads major indexes list.
+    :return:
+    """
     uri = "major-idx/list"
     js = request_with_retry(uri, None)
     js = js.decode()
@@ -9,13 +13,22 @@ def load_major_index_list():
     return idx
 
 
-def load_major_index_data(
+def major_load_data(
         min_date: tp.Union[str, datetime.date, None] = None,
         max_date: tp.Union[str, datetime.date, None] = None,
         tail: tp.Union[datetime.timedelta, float, int] = DEFAULT_TAIL,
         dims: tp.Tuple[str, str, str] = (ds.FIELD, ds.TIME, ds.ASSET),
         forward_order: bool = True,
 ):
+    """
+    Loads major indexes data
+    :param min_date:
+    :param max_date:
+    :param tail:
+    :param dims:
+    :param forward_order:
+    :return:
+    """
     max_date = parse_date(max_date)
 
     if MAX_DATE_LIMIT is not None:
@@ -31,23 +44,39 @@ def load_major_index_data(
 
     uri = "major-idx/data?min_date=" + str(min_date) + "&max_date=" + str(max_date)
     raw = request_with_retry(uri, None)
-
-    arr = xr.open_dataarray(raw, cache=True, decode_times=True)
-    arr = arr.compute()
+    if raw is None:
+        arr = xr.DataArray(
+            [[[np.nan]*3]]*5,
+            dims=[ds.FIELD, ds.TIME, ds.ASSET],
+            coords={
+                ds.FIELD: [
+                  f.OPEN, f.HIGH, f.LOW, f.CLOSE, f.VOL
+                ],
+                ds.TIME: pd.DatetimeIndex([max_date]),
+                ds.ASSET: ['US30', 'US500', 'USTEC']
+            }
+        )[:,1:,:]
+    else:
+        arr = xr.open_dataarray(raw, cache=True, decode_times=True)
+        arr = arr.compute()
 
     if forward_order:
         arr = arr.sel(**{ds.TIME: slice(None, None, -1)})
+
+    arr = arr.dropna(ds.TIME, 'all')
+
     arr.name = "major_indexes"
     return arr.transpose(*dims)
 
 
-def load_index_list(
+def load_list(
         min_date: tp.Union[str, datetime.date, None] = None,
         max_date: tp.Union[str, datetime.date, None] = None,
         tail: tp.Union[datetime.timedelta, int, float] = DEFAULT_TAIL
 ) -> list:
     """
-    :return: list of dicts with info for all indexes
+    Loads index list
+    :return:
     """
     max_date = parse_date(max_date)
 
@@ -77,7 +106,7 @@ def load_index_list(
     return idx
 
 
-def load_index_data(
+def load_data(
         assets: tp.Union[None, tp.List[tp.Union[str,dict]]] = None,
         min_date: tp.Union[str, datetime.date, None] = None,
         max_date: tp.Union[str, datetime.date, None] = None,
@@ -85,6 +114,16 @@ def load_index_data(
         forward_order: bool = True,
         tail: tp.Union[datetime.timedelta, int, float] = DEFAULT_TAIL,
 ) -> tp.Union[None, xr.DataArray]:
+    """
+    Loads index time series.
+    :param assets:
+    :param min_date:
+    :param max_date:
+    :param dims:
+    :param forward_order:
+    :param tail:
+    :return:
+    """
     max_date = parse_date(max_date)
 
     if MAX_DATE_LIMIT is not None:
@@ -102,7 +141,7 @@ def load_index_data(
         assets = [a['id'] if type(a) == dict else a for a in assets]
 
     if assets is None:
-        assets_array = load_index_list(min_date, max_date)
+        assets_array = load_list(min_date, max_date)
         assets_arg = [i['id'] for i in assets_array]
     else:
         assets_arg = assets
@@ -113,18 +152,28 @@ def load_index_data(
     raw = request_with_retry("idx/data", params)
 
     if raw is None or len(raw) < 1:
-        return None
-
-    arr = xr.open_dataarray(raw, cache=True, decode_times=True)
-    arr = arr.compute()
+        arr = xr.DataArray(
+            [[np.nan]],
+            dims=[ds.TIME, ds.ASSET],
+            coords={
+                ds.TIME: pd.DatetimeIndex([max_date]),
+                ds.ASSET: ['ignore']
+            }
+        )[1:,1:]
+    else:
+        arr = xr.open_dataarray(raw, cache=True, decode_times=True)
+        arr = arr.compute()
 
     if forward_order:
         arr = arr.sel(**{ds.TIME: slice(None, None, -1)})
 
     if assets is not None:
+        assets = list(set(assets))
         assets = sorted(assets)
         assets = xr.DataArray(assets, dims=[ds.ASSET], coords={ds.ASSET:assets})
-        arr = arr.broadcast_like(assets)
+        arr = arr.broadcast_like(assets).sel(asset=assets)
+
+    arr = arr.dropna(ds.TIME, 'all')
 
     arr.name = "indexes"
     return arr.transpose(*dims)

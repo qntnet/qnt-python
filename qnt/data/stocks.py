@@ -1,9 +1,10 @@
 import qnt.data.id_translation as idt
+import sys
 
 from qnt.data.common import *
 
 
-def load_assets(
+def load_list(
         min_date: tp.Union[str, datetime.date, None] = None,
         max_date: tp.Union[str, datetime.date, None] = None,
         tail: tp.Union[datetime.timedelta, float, int] = 4 * 365
@@ -42,6 +43,9 @@ def load_assets(
     tickers.sort(key=lambda a: a['id'])
 
     return tickers
+
+
+load_assets = deprecated_wrap(load_list)
 
 
 def load_data(
@@ -121,11 +125,13 @@ def load_origin_data(assets=None, min_date=None, max_date=None,
         assets = [a['id'] if type(a) == dict else a for a in assets]
 
     if assets is None:
-        assets_array = load_assets(min_date=min_date, max_date=max_date, tail=tail)
+        assets_array = load_list(min_date=min_date, max_date=max_date, tail=tail)
         assets_arg = [a['id'] for a in assets_array]
     else:
         assets_arg = assets
     assets_arg = [idt.translate_user_id_to_server_id(id) for id in assets_arg]
+
+    assets_arg = list(set(assets_arg))  # rm duplicates
 
     # load data from server
     if max_date is None and "LAST_DATA_PATH" in os.environ:
@@ -170,32 +176,35 @@ def load_origin_data(assets=None, min_date=None, max_date=None,
             + str(round(time.time() - start_time)) + "s"
         )
 
+    fields = [f.OPEN, f.LOW, f.HIGH, f.CLOSE, f.VOL, f.DIVS, f.SPLIT, f.SPLIT_CUMPROD, f.IS_LIQUID]
     if len(chunks) == 0:
-        fields = [f.OPEN, f.LOW, f.HIGH, f.CLOSE, f.VOL, f.DIVS, f.SPLIT, f.SPLIT_CUMPROD]
-        return xr.DataArray(
-            [[[np.nan] * len(assets_arg)]]*len(fields),
+        whole = xr.DataArray(
+            [[[np.nan]]]*len(fields),
             dims=[ds.FIELD, ds.TIME, ds.ASSET],
             coords={
                 ds.FIELD: fields,
-                ds.TIME: max_date,
-                ds.ASSET: assets_arg
+                ds.TIME: pd.DatetimeIndex([max_date]),
+                ds.ASSET: ['ignore']
             }
-        )
+        )[:,1:,1:]
+    else:
+        whole = xr.concat(chunks, ds.ASSET)
 
-    whole = xr.concat(chunks, ds.ASSET)
-    whole = whole.transpose(ds.FIELD, ds.TIME, ds.ASSET)
     whole.coords[ds.ASSET] = [idt.translate_server_id_to_user_id(id) for id in whole.coords[ds.ASSET].values]
-    whole = whole.loc[
-        [f.OPEN, f.LOW, f.HIGH, f.CLOSE, f.VOL, f.DIVS, f.SPLIT, f.SPLIT_CUMPROD, f.IS_LIQUID],
-        np.sort(whole.coords[ds.TIME])[::-1],
-        np.sort(whole.coords[ds.ASSET])
-    ]
 
     if assets is not None:
         assets = sorted(assets)
         assets = xr.DataArray(assets, dims=[ds.ASSET], coords={ds.ASSET:assets})
         whole = whole.broadcast_like(assets)
-    return whole
+
+    whole = whole.transpose(ds.FIELD, ds.TIME, ds.ASSET)
+    whole = whole.loc[
+        fields,
+        np.sort(whole.coords[ds.TIME])[::-1],
+        np.sort(whole.coords[ds.ASSET])
+    ]
+
+    return whole.dropna(ds.TIME, 'all')
 
 
 def load_origin_data_chunk(assets, min_date, max_date):  # min_date and max_date - iso date str
@@ -229,7 +238,7 @@ def setup_ids():
 if __name__ == '__main__':
     # import qnt.id_translation
     # qnt.id_translation.USE_ID_TRANSLATION = False
-    assets = load_assets()
+    assets = load_list()
     print(len(assets))
     ids = [i['id'] for i in assets]
     print(ids)
