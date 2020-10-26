@@ -194,7 +194,7 @@ def calc_relative_return_np(WEIGHT, UNLOCKED, OPEN, CLOSE, SLIPPAGE, DIVS, ROLL,
     return RR
 
 
-def arrange_data(data, target_weights, additional_series=None, per_asset=False, fix_liquid=True):
+def arrange_data(data, target_weights, additional_series=None, per_asset=False):
     """
     arranges data for proper calculations
     :param per_asset:
@@ -538,14 +538,15 @@ def calc_holding_log_np_nb(weights: np.ndarray) -> np.ndarray:  # , equity: np.n
 
 
 def calc_non_liquid(data, portfolio_history):
-    (adj_data, adj_ph, ignored) = arrange_data(data, portfolio_history, None)
+    (adj_data, adj_ph, ignored) = arrange_data(data, portfolio_history, None, False)
     if f.IS_LIQUID in adj_data.coords[ds.FIELD]:
-        non_liquid = adj_ph.where(np.logical_or(np.isnan(adj_data.loc[f.IS_LIQUID]), adj_data.loc[f.IS_LIQUID] == 0))
-        non_liquid = non_liquid.dropna(ds.ASSET, 'all')
-        non_liquid = non_liquid.dropna(ds.TIME, 'all')
-        if abs(non_liquid).sum() > 0:
-            return non_liquid
-    return None
+        non_liquid = adj_ph.where(adj_data.loc[f.IS_LIQUID].fillna(0) == 0)
+    else:
+        non_liquid = xr.full_like(adj_data.loc[f.CLOSE], np.nan)
+    non_liquid = non_liquid.where(abs(non_liquid) > 0)
+    non_liquid = non_liquid.dropna(ds.ASSET, 'all')
+    non_liquid = non_liquid.dropna(ds.TIME, 'all')
+    return non_liquid
 
 
 def find_missed_dates(output, data):
@@ -632,10 +633,10 @@ def calc_stat(data, portfolio_history, slippage_factor=0.05, roll_slippage_facto
         print("WARNING: some dates are missed in the portfolio_history", file=sys.stderr)
 
     portfolio_history = output_normalize(portfolio_history, per_asset)
-    if f.IS_LIQUID in data.coords[ds.FIELD]:
-        non_liquid = calc_non_liquid(data, portfolio_history)
-        if non_liquid is not None:
-            print("WARNING: Strategy trades non-liquid assets.", file=sys.stderr)
+
+    non_liquid = calc_non_liquid(data, portfolio_history)
+    if len(non_liquid.coords[ds.TIME]) > 0:
+        print("WARNING: Strategy trades non-liquid assets.", file=sys.stderr)
 
     RR = calc_relative_return(data, portfolio_history, slippage_factor, roll_slippage_factor, per_asset, points_per_year)
 

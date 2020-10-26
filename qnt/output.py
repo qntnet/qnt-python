@@ -47,10 +47,10 @@ def clean(output, data, kind="stocks"):
     if f.IS_LIQUID in data.coords[ds.FIELD]:
         print("Check liquidity...")
         non_liquid = qns.calc_non_liquid(data, output)
-        if non_liquid is not None:
+        if len(non_liquid.coords[ds.TIME]) > 0:
             print("ERROR! Strategy trades non-liquid assets.")
             print("Fix liquidity...")
-            output = output.where(data.sel(field='is_liquid') > 0).fillna(0)
+            output = output.where(data.sel(field=f.IS_LIQUID).fillna(0) > 0).fillna(0)
         print("Ok.")
 
     print("Check missed dates...")
@@ -104,7 +104,7 @@ def check(output, data, kind="stocks"):
         if f.IS_LIQUID in data.coords[ds.FIELD]:
             print("Check liquidity...")
             non_liquid = qns.calc_non_liquid(data, output)
-            if non_liquid is not None:
+            if len(non_liquid.coords[ds.TIME]) > 0:
                 print("ERROR! Strategy trades non-liquid assets.", file=sys.stderr)
             else:
                 print("Ok.")

@@ -114,7 +114,7 @@ def test_strategy(data, strategy=None, **kwargs):
     print("Testing complete " + str(last_time - start_time) + "s")
 
     non_liquid = calc_non_liquid(data, portfolio_history)
-    if non_liquid is not None:
+    if len(non_liquid.coords[ds.TIME]) > 0:
         print("WARNING: Strategy trades non-liquid assets.")
 
     return portfolio_history

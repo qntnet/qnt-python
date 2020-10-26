@@ -135,7 +135,8 @@ def evaluate_passes(data_type='stocks', passes=3, dates=None):
                                               min_date=str(output.time.min().values)[:10], max_date=date)
 
             if data_type == 'stocks':
-                if qnt.stats.calc_non_liquid(data, output) is not None:
+                non_liquid = qnt.stats.calc_non_liquid(data, output)
+                if len(non_liquid.time) > 0:
                     print("ERROR! The output contains illiquid positions.", file=sys.stderr)
 
             missed = qnt.stats.find_missed_dates(output, data)

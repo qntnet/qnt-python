@@ -34,7 +34,7 @@ assets = qndata.load_assets()
 data = qndata.load_data(
     # assets=[a['id'] for a in assets[-150:]],
     # max_date='2020-03-01',
-    tail=12*365,
+    tail=4*365,
     forward_order=True,
     dims=("time", "field", "asset"))
 
@@ -49,14 +49,17 @@ output.loc[{"time":slice('2017-01-01','2019-01-01')}] = np.nan
 output.loc[{"time":slice('2018-01-01','2019-01-01'), "asset": "NASDAQ:MSFT"}] = 1
 output = output.dropna('time', 'all')
 
+print("----")
 print("First check.")
 
 qndata.check_output(output, data)
 
+print("----")
 print("Fix output.")
 
 output = qndata.clean_output(output, data)
 
+print("----")
 print("Second check.")
 
 qndata.check_output(output, data)
