@@ -15,6 +15,7 @@ from .secgov import load_facts as secgov_load_facts
 from .secgov_indicators import load_indicators as secgov_load_indicators
 
 from .crypto import load_data as crypto_load_data
+from .cryptofutures import load_data as cryptofutures_load_data
 
 from .futures import load_list as futures_load_list
 from .futures import load_data as futures_load_data
@@ -33,12 +34,14 @@ from ..output import check as check_output
 
 
 def load_data_by_type(data_type, **kwargs):
-    if data_type == 'stocks':
+    if data_type == 'stocks' or data_type == 'stocks_long':
         return stocks_load_data(**kwargs)
     elif data_type == 'futures':
         return futures_load_data(**kwargs)
     elif data_type == 'crypto':
         return crypto_load_data(**kwargs)
+    elif data_type == 'crypto_futures':
+        return cryptofutures_load_data(**kwargs)
     else:
         raise Exception("Wrong data_type.")
 

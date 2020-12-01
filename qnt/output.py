@@ -28,7 +28,7 @@ def normalize(output, per_asset=False):
     return output
 
 
-def clean(output, data, kind="stocks"):
+def clean(output, data, kind=None):
     """
     Checks the output and fix common errors:
         - liquidity
@@ -43,6 +43,9 @@ def clean(output, data, kind="stocks"):
     import qnt.stats as qns
     import qnt.exposure as qne
     from qnt.data.common import ds, f
+
+    if kind is None:
+        kind = data.name
 
     if f.IS_LIQUID in data.coords[ds.FIELD]:
         print("Check liquidity...")
@@ -61,7 +64,10 @@ def clean(output, data, kind="stocks"):
         add = xr.concat([output.isel(time=-1)] * len(missed_dates), pd.DatetimeIndex(missed_dates, name="time"))
         output = xr.concat([output, add], dim='time')
         output = normalize(output)
-        output = output.ffill('time').where(data.sel(field='is_liquid') > 0).fillna(0)
+        output = output.ffill('time')
+        if kind == "stocks":
+            output = output.where(data.sel(field='is_liquid') > 0)
+        output = output.dropna('asset', 'all').dropna('time', 'all').fillna(0)
         output = normalize(output)
     else:
         print("Ok.")
@@ -69,9 +75,8 @@ def clean(output, data, kind="stocks"):
     if kind == "stocks":
         print("Check exposure...")
         if not qns.check_exposure(output):
-            print("Mix with Buy'n'Hold...")
-            bnh = data.sel(field='is_liquid')
-            output = qne.mix_weights(output, bnh)
+            print("Cut big positions...")
+            output = qne.cut_big_positions(output)
             print("Check exposure...")
             if not qns.check_exposure(output):
                 print("Drop bad days...")
@@ -93,26 +98,30 @@ def clean(output, data, kind="stocks"):
     return output
 
 
-def check(output, data, kind="stocks"):
+def check(output, data, kind=None):
     """
     This function checks your output and warn you if it contains errors.
     :return:
     """
     import qnt.stats as qns
     from qnt.data.common import ds, f, get_env
+
+    if kind is None:
+        kind = data.name
+
     try:
         if f.IS_LIQUID in data.coords[ds.FIELD]:
             print("Check liquidity...")
             non_liquid = qns.calc_non_liquid(data, output)
             if len(non_liquid.coords[ds.TIME]) > 0:
-                print("ERROR! Strategy trades non-liquid assets.", file=sys.stderr)
+                print("ERROR! Strategy trades non-liquid assets.", file=sys.stderr, flush=True)
             else:
                 print("Ok.")
 
         print("Check missed dates...")
         missed_dates = qns.find_missed_dates(output, data)
         if len(missed_dates) > 0:
-            print("ERROR! Some dates were missed.", file=sys.stderr)
+            print("ERROR! Some dates were missed.", file=sys.stderr, flush=True)
         else:
             print("Ok.")
 
@@ -123,14 +132,23 @@ def check(output, data, kind="stocks"):
         if kind == "crypto":
             print("Check BTC...")
             if output.where(output != 0).dropna("asset", "all").coords[ds.ASSET].values.tolist() != ['BTC']:
-                print("ERROR! Output contains not only BTC.", file=sys.stderr)
+                print("ERROR! Output contains not only BTC.", file=sys.stderr, flush=True)
             else:
                 print("Ok.")
             print("Check holding time...")
             ht = qns.calc_avg_holding_time(output)
             ht = ht.isel(time=-1).values
             if ht < 4:
-                print("ERROR! The holding time is too low.", ht, "<", 4, file=sys.stderr)
+                print("ERROR! The holding time is too low.", ht, "<", 4, file=sys.stderr, flush=True)
+            else:
+                print("Ok.")
+
+        if kind == "cryptofutures":
+            print("Check holding time...")
+            ht = qns.calc_avg_holding_time(output)
+            ht = ht.isel(time=-1).values
+            if ht < 4:
+                print("ERROR! The holding time is too low.", ht, "<", 4, file=sys.stderr, flush=True)
             else:
                 print("Ok.")
 
@@ -139,7 +157,7 @@ def check(output, data, kind="stocks"):
         sr = sr.isel(time=-1).values
         print("Check sharpe ratio.")
         if sr < 1:
-            print("ERROR! The sharpe ratio is too low.", sr, '<', 1, file=sys.stderr)
+            print("ERROR! The sharpe ratio is too low.", sr, '<', 1, file=sys.stderr, flush=True)
         else:
             print("Ok.")
 
@@ -147,7 +165,7 @@ def check(output, data, kind="stocks"):
         qns.check_correlation(output, data, False)
 
     except Exception as e:
-        print(e, file=sys.stderr)
+        print(e, file=sys.stderr, flush=True)
 
 
 def write(output):

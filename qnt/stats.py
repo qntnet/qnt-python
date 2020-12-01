@@ -9,16 +9,20 @@ from tabulate import tabulate
 import numba
 import sys, os
 
+
 EPS = 10 ** -7
 
 
-def calc_slippage(data, period_days=14, fract=0.05, points_per_year=None):
+def calc_slippage(data, period_days=14, fract=None, points_per_year=None):
     """
     :param data: xarray with historical data
     :param period_days: period for atr
     :param fract: slippage factor
     :return: xarray with slippage
     """
+    if fract is None:
+        fract = get_default_slippage(data)
+
     if points_per_year is None:
         points_per_year = calc_avg_points_per_year(data)
 
@@ -42,13 +46,25 @@ def calc_slippage(data, period_days=14, fract=0.05, points_per_year=None):
     return dd * fract
 
 
-def calc_relative_return(data, portfolio_history, slippage_factor=0.05, roll_slippage_factor=0.02,
+def calc_relative_return(data, portfolio_history,
+                         slippage_factor=None, roll_slippage_factor=None,
                          per_asset=False, points_per_year=None):
+    if slippage_factor is None:
+        slippage_factor = get_default_slippage(data)
+
+    if roll_slippage_factor is None:
+        roll_slippage_factor = get_default_slippage(data)
+
     target_weights = portfolio_history.shift(**{ds.TIME: 1})[1:]  # shift and cut first point
 
     slippage = calc_slippage(data, 14, slippage_factor, points_per_year=points_per_year)
 
     data, target_weights, slippage = arrange_data(data, target_weights, slippage, per_asset)
+
+    # adjust weights according to price changes close->open : W_open = W_close_prev * OPEN / CLOSE_prev
+    prev_close = data.loc[f.CLOSE].shift(**{ds.TIME: 1}).ffill(ds.TIME)
+    target_weights = target_weights * data.loc[f.OPEN] / prev_close
+    target_weights = output_normalize(target_weights, per_asset)
 
     W = target_weights
     D = data
@@ -276,7 +292,7 @@ def calc_volatility(relative_return, max_periods=None, min_periods=2):
     :return: portfolio volatility
     """
     if max_periods is None:
-        max_periods = default_periods(relative_return)
+        max_periods = get_default_is_period(relative_return)
     max_periods = min(max_periods, len(relative_return.coords[ds.TIME]))
     min_periods = min(min_periods, max_periods)
     return relative_return.rolling({ds.TIME: max_periods}, min_periods=min_periods).std()
@@ -291,7 +307,7 @@ def calc_volatility_annualized(relative_return, max_periods=None, min_periods=2,
     if points_per_year is None:
         points_per_year = calc_avg_points_per_year(relative_return)
     if max_periods is None:
-        max_periods = default_periods(relative_return)
+        max_periods = get_default_is_period(relative_return)
     return calc_volatility(relative_return, max_periods, min_periods) * pow(
         points_per_year, 1. / 2)
 
@@ -323,7 +339,7 @@ def calc_sharpe_ratio_annualized(relative_return, max_periods=None, min_periods=
     if points_per_year is None:
         points_per_year = calc_avg_points_per_year(relative_return)
     if max_periods is None:
-        max_periods = default_periods(relative_return)
+        max_periods = get_default_is_period(relative_return)
     m = calc_mean_return_annualized(relative_return, max_periods, min_periods, points_per_year=points_per_year)
     v = calc_volatility_annualized(relative_return, max_periods, min_periods, points_per_year=points_per_year)
     sr = m / v
@@ -340,7 +356,7 @@ def calc_mean_return(relative_return, max_periods=None, min_periods=1, points_pe
     if points_per_year is None:
         points_per_year = calc_avg_points_per_year(relative_return)
     if max_periods is None:
-        max_periods = default_periods(relative_return)
+        max_periods = get_default_is_period(relative_return)
     max_periods = min(max_periods, len(relative_return.coords[ds.TIME]))
     min_periods = min(min_periods, max_periods)
     return xr.ufuncs.exp(
@@ -572,6 +588,27 @@ def calc_avg_points_per_year(data: xr.DataArray):
     return round(365.25 * 24 / dh)
 
 
+def get_default_is_period(data):
+    if data.name == 'stocks':
+        return int(get_env('IS_STOCKS', '1260', True))
+    if data.name == 'futures' or data.name == 'cryptofutures':
+        return int(get_env('IS_FUTURES', '1764', True))
+    if data.name == 'crypto':
+        return int(get_env('IS_CRYPTO', '60000', True))
+    points_per_year = calc_avg_points_per_year(data)
+    return (points_per_year * 5)
+
+
+def get_default_slippage(data):
+    if data.name == 'stocks':
+        return float(get_env('SL_STOCKS', '0.05', True))
+    if data.name == 'futures' or data.name == 'cryptofutures':
+        return float(get_env('SL_FUTURES', '0.03', True))
+    if data.name == 'crypto':
+        return float(get_env('SL_CRYPTO', '0.05', True))
+    return 0.05
+
+
 def calc_points_per_day(days_per_year):
     if days_per_year < 400:
         return 1
@@ -611,13 +648,15 @@ class StatFields:
 stf = StatFields
 
 
-def calc_stat(data, portfolio_history, slippage_factor=0.05, roll_slippage_factor=0.02,
+def calc_stat(data, portfolio_history,
+              slippage_factor = None, roll_slippage_factor = None,
               min_periods=1, max_periods=None,
               per_asset=False, points_per_year=None):
     """
     :param data: xarray with historical data, data must be split adjusted
     :param portfolio_history: portfolio weights set for every day
-    :param slippage_factor:
+    :param slippage_factor: slippage
+    :param roll_slippage_factor: slippage for contract roll
     :param min_periods: minimal number of days
     :param max_periods: max number of days for rolling
     :param per_asset: calculate stats per asset
@@ -625,18 +664,25 @@ def calc_stat(data, portfolio_history, slippage_factor=0.05, roll_slippage_facto
     """
     if points_per_year is None:
         points_per_year = calc_avg_points_per_year(data)
+
     if max_periods is None:
-        max_periods = (points_per_year * 5) if points_per_year == 252 else (points_per_year * 7)
+        max_periods = get_default_is_period(data)
+
+    if slippage_factor is None:
+        slippage_factor = get_default_slippage(data)
+
+    if roll_slippage_factor is None:
+        roll_slippage_factor = get_default_slippage(data)
 
     missed_dates = find_missed_dates(portfolio_history, data)
     if len(missed_dates) > 0:
-        print("WARNING: some dates are missed in the portfolio_history", file=sys.stderr)
+        print("WARNING: some dates are missed in the portfolio_history", file=sys.stderr, flush=True)
 
     portfolio_history = output_normalize(portfolio_history, per_asset)
 
     non_liquid = calc_non_liquid(data, portfolio_history)
     if len(non_liquid.coords[ds.TIME]) > 0:
-        print("WARNING: Strategy trades non-liquid assets.", file=sys.stderr)
+        print("WARNING: Strategy trades non-liquid assets.", file=sys.stderr, flush=True)
 
     RR = calc_relative_return(data, portfolio_history, slippage_factor, roll_slippage_factor, per_asset, points_per_year)
 
@@ -751,7 +797,7 @@ def check_correlation(portfolio_history, data, print_stack_trace=True):
         if print_stack_trace:
             logging.exception("Correlation check failed.")
         else:
-            print("Correlation check failed.", file=sys.stderr)
+            print("Correlation check failed.", file=sys.stderr, flush=True)
         return
 
     print()
@@ -760,7 +806,7 @@ def check_correlation(portfolio_history, data, print_stack_trace=True):
         print("Ok. This strategy does not correlate with other strategies.")
         return
 
-    print("WARNING! This strategy correlates with other strategies.", file=sys.stderr)
+    print("WARNING! This strategy correlates with other strategies.", file=sys.stderr, flush=True)
     print("The number of systems with a larger Sharpe ratio and correlation larger than 0.8:", len(cr_list))
     print("The max correlation value (with systems with a larger Sharpe ratio):", max([i['cofactor'] for i in cr_list]))
     my_cr = [i for i in cr_list if i['my']]
@@ -822,7 +868,7 @@ def calc_correlation(relative_returns, suppress_exception=True):
 
         return result
     except Exception as e:
-        print("WARNING! Can't calculate correlation.", file=sys.stderr)
+        print("WARNING! Can't calculate correlation.", file=sys.stderr, flush=True)
         if suppress_exception:
             import logging
             logging.exception("network error")
@@ -876,7 +922,7 @@ def check_exposure(portfolio_history,
         print("Ok. The exposure check succeed.")
         return True
     else:
-        print("WARNING! The exposure check failed.", file=sys.stderr)
+        print("WARNING! The exposure check failed.", file=sys.stderr, flush=True)
         print("Hard limit check: ", 'Ok.' if hard_limit_ok else 'Failed.')
         print("Days check: ", 'Ok.' if days_ok else 'Failed.')
         print("Excess check:", 'Ok.' if excess_ok else 'Failed.')
@@ -894,6 +940,4 @@ def calc_exposure(portfolio_history):
     return abs(portfolio_history) / sum
 
 
-def default_periods(data):
-    points_per_year = calc_avg_points_per_year(data)
-    return (points_per_year * 5) if points_per_year == 252 else 60000
+

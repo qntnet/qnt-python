@@ -1,5 +1,6 @@
 import qnt.stats as qnstats
 import xarray as xr
+import numpy as np
 
 
 def drop_bad_days(weights, max_weight = 0.049):
@@ -34,3 +35,7 @@ def mix_weights(primary, secondary, max_weight = 0.049):
     mix = mix/sum
 
     return mix
+
+
+def cut_big_positions(weights, max_weight = 0.049):
+    return weights.where(abs(weights) > max_weight, np.sign(weights)*max_weight, weights)

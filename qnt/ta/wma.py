@@ -75,7 +75,7 @@ def wma(series: nda.NdType, weights: tp.Union[tp.List[float], np.ndarray] = None
     if (weights is None or type(weights) is int):
         if time.time() - last_alert > 60:
             last_alert = time.time()
-            print("Warning! wma(series:ndarray, periods:int) deprecated. Use lwma instead of wma.", file=sys.stderr)
+            print("Warning! wma(series:ndarray, periods:int) deprecated. Use lwma instead of wma.", file=sys.stderr, flush=True)
         return lwma(series,weights)
     if type(weights) is list:
         weights = np.array(weights, np.float64)

@@ -48,11 +48,12 @@ TIMEOUT = 60
 RETRY_DELAY = 1
 
 
-def get_env(key, def_val):
+def get_env(key, def_val, silent=False):
     if key in os.environ:
         return os.environ[key]
     else:
-        print("WARNING: env is not set " + key)
+        if not silent:
+            print("WARNING: env is not set " + key)
         return def_val
 
 
@@ -191,7 +192,7 @@ def deprecated_wrap(origin):
 
     def wrap(*args, **kwargs):
         print('WARNING: ' + deprecated_name + ' deprecated, use ' + origin.__module__ + '.' + origin.__name__,
-              file=sys.stderr)
+              file=sys.stderr, flush=True)
         return origin(*args, **kwargs)
 
     return wrap

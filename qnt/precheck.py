@@ -41,7 +41,7 @@ def evaluate_passes(data_type='stocks', passes=3, dates=None):
     elif data_type == 'crypto':
         in_sample_days = 7*366
     else:
-        print("Unsupported data_type", data_type, file=sys.stderr)
+        print("Unsupported data_type", data_type, file=sys.stderr, flush=True)
         return
 
     print("Output directory is:", result_dir)
@@ -115,13 +115,13 @@ def evaluate_passes(data_type='stocks', passes=3, dates=None):
         print("return code:", code)
 
         if not os.path.exists(fractions_fn):
-            print("ERROR! Output is not found.", file=sys.stderr)
+            print("ERROR! Output is not found.", file=sys.stderr, flush=True)
         if not os.path.exists(last_data_fn):
-            print("ERROR! The strategy does not use all data.", file=sys.stderr)
+            print("ERROR! The strategy does not use all data.", file=sys.stderr, flush=True)
         if not os.path.exists(html_fn):
-            print("ERROR! Conversion to html failed.", file=sys.stderr)
+            print("ERROR! Conversion to html failed.", file=sys.stderr, flush=True)
         if code != 0:
-            print("ERROR! Return code != 0.", file=sys.stderr)
+            print("ERROR! Return code != 0.", file=sys.stderr, flush=True)
 
         if os.path.exists(fractions_fn):
             print("Check the output...")
@@ -137,11 +137,11 @@ def evaluate_passes(data_type='stocks', passes=3, dates=None):
             if data_type == 'stocks':
                 non_liquid = qnt.stats.calc_non_liquid(data, output)
                 if len(non_liquid.time) > 0:
-                    print("ERROR! The output contains illiquid positions.", file=sys.stderr)
+                    print("ERROR! The output contains illiquid positions.", file=sys.stderr, flush=True)
 
             missed = qnt.stats.find_missed_dates(output, data)
             if len(missed) > 0:
-                print("ERROR: some dates are missed in the output.", missed, file=sys.stderr)
+                print("ERROR: some dates are missed in the output.", missed, file=sys.stderr, flush=True)
             else:
                 print("There are no missed dates.")
 
@@ -172,7 +172,7 @@ def assemble_output(add_mode='all'):
     output = None
 
     if len(files) == 0:
-        print("ERROR! There are no outputs.", file=sys.stderr)
+        print("ERROR! There are no outputs.", file=sys.stderr, flush=True)
 
     for f in files:
         date = f.split(".")[0]
@@ -211,7 +211,7 @@ def load_output(fn, date):
 
 def check_output(output, data_type='stocks'):
     if data_type != 'stocks' and data_type != 'futures' and data_type != 'crypto':
-        print("Unsupported data_type", data_type, file=sys.stderr)
+        print("Unsupported data_type", data_type, file=sys.stderr, flush=True)
         return
 
     if data_type == 'stocks' or data_type == 'futures':
@@ -225,7 +225,7 @@ def check_output(output, data_type='stocks'):
     output_tail = output.where(output.time > min_date).dropna('time', 'all')
     if len(output_tail) < in_sample_points:
         print("ERROR! In sample period does not contain enough points. " +
-              str(len(output_tail)) + " < " + str(in_sample_points), file=sys.stderr)
+              str(len(output_tail)) + " < " + str(in_sample_points), file=sys.stderr, flush=True)
     else:
         print("Ok. In sample period contains enough points." + str(len(output_tail)) + " >= " + str(in_sample_points))
 
@@ -240,7 +240,7 @@ def check_output(output, data_type='stocks'):
 
     sr = stat.sel(field="sharpe_ratio").isel(time=-1).values
     if sr < 1:
-        print("ERROR! In sample sharpe ratio is too low. " + str(sr) + " < 1", file=sys.stderr)
+        print("ERROR! In sample sharpe ratio is too low. " + str(sr) + " < 1", file=sys.stderr, flush=True)
     else:
         print("Ok. In sample sharpe ratio is enough. " + str(sr) + " >= 1")
 
