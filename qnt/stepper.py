@@ -1,3 +1,4 @@
+from qnt.log import log_info, log_err
 import time
 import pandas as pd
 import xarray as xr
@@ -5,6 +6,10 @@ import numpy as np
 
 from .data import load_data, f, ds, write_output
 from .stats import calc_non_liquid
+
+
+log_err("qnt.stepper is deprecated and will be removed. see qnt.backtester")
+
 
 class SimpleStrategy:
     init_data_length = 0 # optional - data length for init
@@ -54,7 +59,7 @@ def test_strategy(data, strategy=None, **kwargs):
     :param kwargs: if strategy is None, arguments to build a strategy class
     :return: portfolio weights set for every day
     """
-    print("Testing started...")
+    log_info("Testing started...")
 
     if strategy is None:
         strategy = StrategyAdapter(**kwargs)
@@ -105,17 +110,17 @@ def test_strategy(data, strategy=None, **kwargs):
 
         if time.time() - last_time > 5:
             last_time = time.time()
-            print("Testing progress: " +
-                  str(step + 1) + "/" + str(point_count) + " " +
-                  str(round(last_time - start_time)) + "s")
+            log_info("Testing progress: " +
+                     str(step + 1) + "/" + str(point_count) + " " +
+                     str(round(last_time - start_time)) + "s")
 
     last_time = time.time()
 
-    print("Testing complete " + str(last_time - start_time) + "s")
+    log_info("Testing complete " + str(last_time - start_time) + "s")
 
     non_liquid = calc_non_liquid(data, portfolio_history)
     if len(non_liquid.coords[ds.TIME]) > 0:
-        print("WARNING: Strategy trades non-liquid assets.")
+        log_info("WARNING: Strategy trades non-liquid assets.")
 
     return portfolio_history
 
@@ -131,4 +136,4 @@ if __name__ == "__main__":
     write_output(output)
     t = time.time()
 
-    print(output.to_pandas())
+    log_info(output.to_pandas())
