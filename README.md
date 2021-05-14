@@ -1,3 +1,1 @@
-QNT library for strategies
-
-The latest verion is hosted here: https://github.com/qntnet/qnt-python
+The latest verion is hosted here: https://github.com/quantiacs/toolbox
